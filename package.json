@@ -1,0 +1,63 @@
+{
+  "name": "@oma3/omatrust",
+  "version": "0.1.0",
+  "description": "Framework-agnostic TypeScript SDK for OMATrust",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "import": "./dist/identity/index.js",
+      "require": "./dist/identity/index.cjs"
+    },
+    "./reputation": {
+      "types": "./dist/reputation/index.d.ts",
+      "import": "./dist/reputation/index.js",
+      "require": "./dist/reputation/index.cjs"
+    },
+    "./app-registry": {
+      "types": "./dist/app-registry/index.d.ts",
+      "import": "./dist/app-registry/index.js",
+      "require": "./dist/app-registry/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "canonicalize": "^2.1.0"
+  },
+  "peerDependencies": {
+    "@ethereum-attestation-service/eas-sdk": "^2.4.0",
+    "ethers": "^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@ethereum-attestation-service/eas-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

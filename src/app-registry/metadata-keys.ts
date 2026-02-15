@@ -1,0 +1,13 @@
+export const METADATA_KEY_DID = "omat.did";
+export const METADATA_KEY_DID_HASH = "omat.didHash";
+export const METADATA_KEY_DATA_HASH = "omat.dataHash";
+export const METADATA_KEY_DATA_HASH_ALGORITHM = "omat.dataHashAlgorithm";
+export const METADATA_KEY_STATUS = "omat.status";
+export const METADATA_KEY_INTERFACES = "omat.interfaces";
+export const METADATA_KEY_FUNGIBLE_TOKEN_ID = "omat.fungibleTokenId";
+export const METADATA_KEY_CONTRACT_ID = "omat.contractId";
+export const METADATA_KEY_VERSION_MAJOR = "omat.versionMajor";
+export const METADATA_KEY_VERSION_MINOR = "omat.versionMinor";
+export const METADATA_KEY_VERSION_PATCH = "omat.versionPatch";
+export const METADATA_KEY_TRAIT_HASHES = "omat.traitHashes";
+export const METADATA_KEY_METADATA_JSON = "omat.metadataJson";
