@@ -1,6 +1,6 @@
 {
   "name": "@oma3/omatrust",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.0",
   "description": "Framework-agnostic TypeScript SDK for OMATrust",
   "license": "MIT",
   "type": "module",
@@ -55,9 +55,14 @@
     }
   },
   "devDependencies": {
+    "@ethereum-attestation-service/eas-sdk": "^2.9.0",
     "@types/node": "^22.10.2",
+    "ethers": "^6.16.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -29,7 +29,7 @@ describe("identity module", () => {
     const hash = computeDidHash(did);
     const addr = didToAddress(did);
     expect(hash).toMatch(/^0x[0-9a-f]{64}$/i);
-    expect(addr).toMatch(/^0x[0-9a-f]{40}$/i);
+    expect(addr).toMatch(/^0x[0-9a-f]{40}$/);
     expect(validateDidAddress(did, addr as `0x${string}`)).toBe(true);
   });
 

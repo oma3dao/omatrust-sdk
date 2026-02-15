@@ -137,8 +137,8 @@ export function computeDidAddress(didHash: Hex): Hex {
     throw new OmaTrustError("INVALID_DID", "didHash must be 32-byte hex", { didHash });
   }
 
-  const truncated = `0x${didHash.slice(-40)}`;
-  return getAddress(truncated) as Hex;
+  // Spec: low-order 160 bits of didHash, serialized as lowercase 0x-hex.
+  return `0x${didHash.slice(-40).toLowerCase()}` as Hex;
 }
 
 export function didToAddress(did: Did): Hex {
