@@ -3,6 +3,7 @@ import { encodeAttestationData, extractExpirationTime } from "./encode";
 import { resolveRecipientAddress, toBigIntOrDefault, withAutoSubjectDidHash, ZERO_UID } from "./internal";
 import { OmaTrustError } from "../shared/errors";
 import type {
+  BuildDelegatedTypedDataFromEncodedParams,
   Hex,
   PrepareDelegatedAttestationParams,
   PrepareDelegatedAttestationResult,
@@ -10,21 +11,28 @@ import type {
   SubmitDelegatedAttestationResult
 } from "./types";
 
-export function buildDelegatedAttestationTypedData(
-  params: PrepareDelegatedAttestationParams
+type BuildDelegatedTypedDataParams = {
+  chainId: number;
+  easContractAddress: Hex;
+  schemaUid: Hex;
+  encodedData: Hex;
+  recipient: string;
+  attester: Hex;
+  nonce: bigint | number;
+  revocable?: boolean;
+  expirationTime?: bigint | number;
+  refUid?: Hex;
+  value?: bigint | number;
+  deadline?: bigint | number;
+};
+
+function buildDelegatedTypedData(
+  params: BuildDelegatedTypedDataParams
 ): {
   domain: Record<string, unknown>;
   types: Record<string, unknown>;
   message: Record<string, unknown>;
 } {
-  const dataWithHash = withAutoSubjectDidHash(params.schema, params.data);
-  const encodedData = encodeAttestationData(params.schema, dataWithHash);
-  const recipient = resolveRecipientAddress(dataWithHash);
-  const expiration = toBigIntOrDefault(
-    params.expirationTime ?? extractExpirationTime(dataWithHash),
-    0n
-  );
-
   return {
     domain: {
       name: "EAS",
@@ -49,16 +57,66 @@ export function buildDelegatedAttestationTypedData(
     message: {
       attester: params.attester,
       schema: params.schemaUid,
-      recipient,
-      expirationTime: expiration,
+      recipient: params.recipient,
+      expirationTime: toBigIntOrDefault(params.expirationTime, 0n),
       revocable: params.revocable ?? true,
       refUID: params.refUid ?? ZERO_UID,
-      data: encodedData,
+      data: params.encodedData,
       value: toBigIntOrDefault(params.value, 0n),
       nonce: toBigIntOrDefault(params.nonce, 0n),
       deadline: toBigIntOrDefault(params.deadline, BigInt(Math.floor(Date.now() / 1000) + 600))
     }
   };
+}
+
+export function buildDelegatedAttestationTypedData(
+  params: PrepareDelegatedAttestationParams
+): {
+  domain: Record<string, unknown>;
+  types: Record<string, unknown>;
+  message: Record<string, unknown>;
+} {
+  const dataWithHash = withAutoSubjectDidHash(params.schema, params.data);
+  const encodedData = encodeAttestationData(params.schema, dataWithHash);
+  const recipient = resolveRecipientAddress(dataWithHash);
+
+  return buildDelegatedTypedData({
+    chainId: params.chainId,
+    easContractAddress: params.easContractAddress,
+    schemaUid: params.schemaUid,
+    encodedData,
+    recipient,
+    attester: params.attester,
+    nonce: params.nonce,
+    revocable: params.revocable,
+    expirationTime: params.expirationTime ?? extractExpirationTime(dataWithHash),
+    refUid: params.refUid,
+    value: params.value,
+    deadline: params.deadline
+  });
+}
+
+export function buildDelegatedTypedDataFromEncoded(
+  params: BuildDelegatedTypedDataFromEncodedParams
+): {
+  domain: Record<string, unknown>;
+  types: Record<string, unknown>;
+  message: Record<string, unknown>;
+} {
+  return buildDelegatedTypedData({
+    chainId: params.chainId,
+    easContractAddress: params.easContractAddress,
+    schemaUid: params.schemaUid,
+    encodedData: params.encodedData,
+    recipient: params.recipient,
+    attester: params.attester,
+    nonce: params.nonce,
+    revocable: params.revocable,
+    expirationTime: params.expirationTime,
+    refUid: params.refUid,
+    value: params.value,
+    deadline: params.deadline
+  });
 }
 
 export function splitSignature(signature: Hex | string): { v: number; r: Hex; s: Hex } {

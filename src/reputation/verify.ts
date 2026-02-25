@@ -6,7 +6,7 @@ import {
 } from "./proof/tx-encoded-value";
 import { verifyDidDocumentControllerDid } from "./proof/did-json";
 import { verifyEip712Signature } from "./proof/eip712";
-import { parseDnsTxtRecord } from "./proof/dns-txt";
+import { parseDnsTxtRecord } from "./proof/dns-txt-record";
 import type {
   AttestationQueryResult,
   ProofPurpose,

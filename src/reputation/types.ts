@@ -151,6 +151,21 @@ export type PrepareDelegatedAttestationResult = {
   };
 };
 
+export type BuildDelegatedTypedDataFromEncodedParams = {
+  chainId: number;
+  easContractAddress: Hex;
+  schemaUid: Hex;
+  encodedData: Hex;
+  recipient: Hex;
+  attester: Hex;
+  nonce: bigint | number;
+  revocable?: boolean;
+  expirationTime?: bigint | number;
+  refUid?: Hex;
+  value?: bigint | number;
+  deadline?: bigint | number;
+};
+
 export type SubmitDelegatedAttestationParams = {
   relayUrl: string;
   prepared: PrepareDelegatedAttestationResult;

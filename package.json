@@ -29,6 +29,10 @@
         "import": "./dist/reputation/index.d.ts",
         "require": "./dist/reputation/index.d.cts"
       },
+      "browser": {
+        "import": "./dist/reputation/index.browser.js",
+        "require": "./dist/reputation/index.browser.cjs"
+      },
       "import": "./dist/reputation/index.js",
       "require": "./dist/reputation/index.cjs"
     },
