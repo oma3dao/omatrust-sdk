@@ -15,9 +15,18 @@ const EAS_EVENT_ABI = [
   "event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID)"
 ];
 
+function parseEventTxHash(event: unknown): Hex | undefined {
+  const txHash = (event as { transactionHash?: unknown }).transactionHash;
+  if (typeof txHash !== "string") {
+    return undefined;
+  }
+  return /^0x[0-9a-fA-F]{64}$/.test(txHash) ? (txHash as Hex) : undefined;
+}
+
 function parseAttestation(
   attestation: Record<string, unknown>,
-  schema?: SchemaField[] | string
+  schema?: SchemaField[] | string,
+  txHash?: Hex
 ): AttestationQueryResult {
   const rawData = (attestation.data as Hex | undefined) ?? ("0x" as Hex);
   const decoded = schema ? decodeAttestationData(schema, rawData) : {};
@@ -39,6 +48,7 @@ function parseAttestation(
     schema: attestation.schema as Hex,
     attester: attestation.attester as Hex,
     recipient: attestation.recipient as Hex,
+    txHash,
     revocable: Boolean(attestation.revocable),
     revocationTime: toBigIntSafe(attestation.revocationTime),
     expirationTime: toBigIntSafe(attestation.expirationTime),
@@ -114,7 +124,7 @@ export async function getAttestationsForDid(
       continue;
     }
 
-    results.push(parseAttestation(attestation));
+    results.push(parseAttestation(attestation, undefined, parseEventTxHash(event)));
   }
 
   results.sort((a, b) => Number(b.time - a.time));
@@ -177,7 +187,7 @@ export async function getLatestAttestations(
       continue;
     }
 
-    results.push(parseAttestation(attestation));
+    results.push(parseAttestation(attestation, undefined, parseEventTxHash(event)));
   }
 
   results.sort((a, b) => Number(b.time - a.time));

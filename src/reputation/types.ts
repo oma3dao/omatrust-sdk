@@ -23,6 +23,7 @@ export type AttestationQueryResult = {
   schema: Hex;
   attester: Hex;
   recipient: Hex;
+  txHash?: Hex;
   revocable: boolean;
   revocationTime: bigint;
   expirationTime: bigint;
