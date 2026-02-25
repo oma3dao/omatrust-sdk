@@ -2,6 +2,7 @@ import { EAS } from "@ethereum-attestation-service/eas-sdk";
 import { ZeroAddress } from "ethers";
 import { encodeAttestationData, extractExpirationTime } from "./encode";
 import { withAutoSubjectDidHash, resolveRecipientAddress, toBigIntOrDefault, ZERO_UID } from "./internal";
+import { getEasTransactionHash, getEasTransactionReceipt } from "./eas-adapter";
 import { OmaTrustError } from "../shared/errors";
 import type { SubmitAttestationParams, SubmitAttestationResult, Hex } from "./types";
 
@@ -41,13 +42,13 @@ export async function submitAttestation(
     });
 
     const uid = (await tx.wait()) as Hex;
-    const txAny = tx as unknown as { tx?: { hash?: string }; hash?: string; transaction?: { hash?: string } };
-    const txHash = (txAny.tx?.hash ?? txAny.hash ?? txAny.transaction?.hash ?? ZERO_UID) as Hex;
+    const txHash = getEasTransactionHash(tx) ?? ZERO_UID;
+    const receipt = getEasTransactionReceipt(tx);
 
     return {
       uid,
       txHash,
-      receipt: txAny.tx
+      receipt
     };
   } catch (err) {
     throw new OmaTrustError("NETWORK_ERROR", "Failed to submit attestation", { err });

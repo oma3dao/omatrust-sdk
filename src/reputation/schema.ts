@@ -1,4 +1,5 @@
 import { OmaTrustError } from "../shared/errors";
+import { isEasSchemaNotFoundError } from "./eas-adapter";
 import type { Hex } from "./types";
 
 export async function verifySchemaExists(
@@ -43,6 +44,9 @@ export async function getSchemaDetails(
       revocable: Boolean(details.revocable)
     };
   } catch (err) {
+    if (isEasSchemaNotFoundError(err)) {
+      throw new OmaTrustError("SCHEMA_NOT_FOUND", "Schema was not found", { schemaUid });
+    }
     if (err instanceof OmaTrustError) {
       throw err;
     }
