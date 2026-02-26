@@ -3,7 +3,9 @@
 Framework-agnostic TypeScript SDK for OMATrust.
 
 Current npm state:
-- Published prerelease: `0.1.0-alpha.0`
+- As of February 25, 2026:
+  - `latest` -> `0.1.0-alpha.5`
+  - `alpha` -> `0.1.0-alpha.5`
 - Scope: `@oma3/omatrust`
 
 ## Install
@@ -14,10 +16,16 @@ Install current published package:
 npm install @oma3/omatrust ethers
 ```
 
-If you want to pin the current prerelease explicitly:
+Install the current `alpha` tag explicitly:
 
 ```bash
-npm install @oma3/omatrust@0.1.0-alpha.0 ethers
+npm install @oma3/omatrust@alpha ethers
+```
+
+If you want to pin an exact version:
+
+```bash
+npm install @oma3/omatrust@0.1.0-alpha.5 ethers
 ```
 
 If you use the reputation module, also install EAS SDK:
@@ -44,15 +52,21 @@ npm install @ethereum-attestation-service/eas-sdk
   - trait hashing + metadata keys
   - data hash verification
 
+- Check current dist-tags:
+
+```bash
+npm dist-tag ls @oma3/omatrust
+```
+
 ## Documentation
 
 Use the OMATrust developer docs as the canonical source for quick starts and API examples:
 
 - [SDK Getting Started](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/getting-started.md)
-- [Reputation SDK Guide](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/reputation-sdk.md)
-- [Reputation SDK Reference](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/reputation-reference.md)
-- [Identity SDK Reference](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/identity-reference.md)
-- [App Registry SDK Reference](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/app-registry-reference.md)
+- [SDK Guides](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/guides.md)
+- [Reputation SDK Reference](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/api-reference/reputation-sdk.md)
+- [Identity SDK Reference](https://github.com/oma3dao/developer-docs/blob/main/docs/sdk/api-reference/identity-sdk.md)
+- [App Registry SDK Reference](https://github.com/oma3dao/developer-docs/blob/main/docs/app-registry/registry-sdk-reference.md)
 
 ## Notes
 
