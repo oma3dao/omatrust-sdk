@@ -5,6 +5,7 @@ import { decodeAttestationData } from "./encode";
 import { OmaTrustError } from "../shared/errors";
 import type {
   AttestationQueryResult,
+  GetAttestationsByAttesterParams,
   GetAttestationParams,
   Hex,
   ListAttestationsParams,
@@ -80,15 +81,15 @@ export async function getAttestation(
   }
 }
 
-export async function getAttestationsForDid(
-  params: ListAttestationsParams
+async function queryAttestationEvents(
+  easContractAddress: Hex,
+  provider: never,
+  fromBlock: number,
+  toBlock: number,
+  options?: { recipient?: string | null; attester?: string | null; schemas?: Hex[] }
 ): Promise<AttestationQueryResult[]> {
-  const provider = params.provider as never;
-  const contract = new Contract(params.easContractAddress, EAS_EVENT_ABI, provider);
-
-  const toBlock = params.toBlock ?? (await (provider as { getBlockNumber: () => Promise<number> }).getBlockNumber());
-  const fromBlock = params.fromBlock ?? Math.max(0, toBlock - 50_000);
-  const filter = contract.filters.Attested(didToAddress(params.did));
+  const contract = new Contract(easContractAddress, EAS_EVENT_ABI, provider);
+  const filter = contract.filters.Attested(options?.recipient ?? null, options?.attester ?? null);
 
   let events;
   try {
@@ -97,10 +98,10 @@ export async function getAttestationsForDid(
     throw new OmaTrustError("NETWORK_ERROR", "Failed to query attestation events", { err });
   }
 
-  const eas = new EAS(params.easContractAddress);
+  const eas = new EAS(easContractAddress);
   eas.connect(provider);
 
-  const schemaFilter = params.schemas?.map((schema) => schema.toLowerCase());
+  const schemaFilter = options?.schemas?.map((s) => s.toLowerCase());
   const results: AttestationQueryResult[] = [];
 
   for (const event of events) {
@@ -131,6 +132,43 @@ export async function getAttestationsForDid(
   return results;
 }
 
+export async function getAttestationsForDid(
+  params: ListAttestationsParams
+): Promise<AttestationQueryResult[]> {
+  const provider = params.provider as never;
+  const toBlock = params.toBlock ?? (await (provider as { getBlockNumber: () => Promise<number> }).getBlockNumber());
+  const fromBlock = params.fromBlock ?? Math.max(0, toBlock - 50_000);
+  return queryAttestationEvents(
+    params.easContractAddress,
+    provider,
+    fromBlock,
+    toBlock,
+    { recipient: didToAddress(params.did), schemas: params.schemas }
+  );
+}
+
+export async function getAttestationsByAttester(
+  params: GetAttestationsByAttesterParams
+): Promise<AttestationQueryResult[]> {
+  const provider = params.provider as never;
+  const toBlock = params.toBlock ?? (await (provider as { getBlockNumber: () => Promise<number> }).getBlockNumber());
+  const fromBlock = params.fromBlock ?? Math.max(0, toBlock - 50_000);
+
+  if (params.limit !== undefined && params.limit <= 0) {
+    return [];
+  }
+
+  const results = await queryAttestationEvents(
+    params.easContractAddress,
+    provider,
+    fromBlock,
+    toBlock,
+    { attester: params.attester, schemas: params.schemas }
+  );
+
+  return params.limit !== undefined ? results.slice(0, params.limit) : results;
+}
+
 export async function listAttestations(
   params: ListAttestationsParams
 ): Promise<AttestationQueryResult[]> {
@@ -155,42 +193,17 @@ export async function getLatestAttestations(
   params: GetLatestAttestationsParams
 ): Promise<AttestationQueryResult[]> {
   const provider = params.provider as never;
-  const contract = new Contract(params.easContractAddress, EAS_EVENT_ABI, provider);
+  const toBlock = await (provider as { getBlockNumber: () => Promise<number> }).getBlockNumber();
+  const fromBlock = params.fromBlock ?? Math.max(0, toBlock - 50_000);
 
-  const currentBlock = await (provider as { getBlockNumber: () => Promise<number> }).getBlockNumber();
-  const fromBlock = params.fromBlock ?? Math.max(0, currentBlock - 50_000);
-  const events = await contract.queryFilter(contract.filters.Attested(), fromBlock, currentBlock);
+  const results = await queryAttestationEvents(
+    params.easContractAddress,
+    provider,
+    fromBlock,
+    toBlock,
+    { schemas: params.schemas }
+  );
 
-  const eas = new EAS(params.easContractAddress);
-  eas.connect(provider);
-
-  const schemaFilter = params.schemas?.map((schema) => schema.toLowerCase());
-  const results: AttestationQueryResult[] = [];
-
-  for (const event of events) {
-    if (!(("args" in event) && Array.isArray(event.args))) {
-      continue;
-    }
-    const args = event.args as unknown[];
-    const uid = args?.[2] as Hex | undefined;
-    const schemaUid = args?.[3] as Hex | undefined;
-    if (!uid || !schemaUid) {
-      continue;
-    }
-
-    if (schemaFilter && !schemaFilter.includes(schemaUid.toLowerCase())) {
-      continue;
-    }
-
-    const attestation = (await eas.getAttestation(uid)) as unknown as Record<string, unknown> | null;
-    if (!attestation || !attestation.uid) {
-      continue;
-    }
-
-    results.push(parseAttestation(attestation, undefined, parseEventTxHash(event)));
-  }
-
-  results.sort((a, b) => Number(b.time - a.time));
   return results.slice(0, params.limit ?? 20);
 }
 

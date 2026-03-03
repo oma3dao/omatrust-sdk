@@ -18,6 +18,13 @@ export type SchemaField = {
   value?: unknown;
 };
 
+export type AttestationValidationError = {
+  schemaFieldName: string;
+  expectedType: string;
+  providedType: string;
+  providedValue: unknown;
+};
+
 export type AttestationQueryResult = {
   uid: Hex;
   schema: Hex;
@@ -128,6 +135,19 @@ export type SubmitAttestationResult = {
   receipt?: unknown;
 };
 
+export type RevokeAttestationParams = {
+  signer: unknown;
+  easContractAddress: Hex;
+  schemaUid: Hex;
+  uid: Hex;
+  value?: bigint | number;
+};
+
+export type RevokeAttestationResult = {
+  txHash: Hex;
+  receipt?: unknown;
+};
+
 export type PrepareDelegatedAttestationParams = {
   chainId: number;
   easContractAddress: Hex;
@@ -189,6 +209,16 @@ export type GetAttestationParams = {
 
 export type ListAttestationsParams = {
   did: Did;
+  provider: unknown;
+  easContractAddress: Hex;
+  schemas?: Hex[];
+  limit?: number;
+  fromBlock?: number;
+  toBlock?: number;
+};
+
+export type GetAttestationsByAttesterParams = {
+  attester: Hex;
   provider: unknown;
   easContractAddress: Hex;
   schemas?: Hex[];

@@ -1,6 +1,7 @@
 export * from "./types";
 
 export * from "./submit";
+export * from "./revoke";
 export * from "./delegated";
 export * from "./query";
 export * from "./verify";

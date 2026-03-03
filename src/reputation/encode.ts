@@ -1,6 +1,8 @@
 import { SchemaEncoder } from "@ethereum-attestation-service/eas-sdk";
+import type { SchemaItem } from "@ethereum-attestation-service/eas-sdk";
+import { isAddress } from "ethers";
 import { OmaTrustError } from "../shared/errors";
-import type { Hex, SchemaField } from "./types";
+import type { AttestationValidationError, Hex, SchemaField } from "./types";
 
 export function normalizeSchema(schema: SchemaField[] | string): SchemaField[] {
   if (Array.isArray(schema)) {
@@ -51,6 +53,16 @@ export function encodeAttestationData(
     throw new OmaTrustError("INVALID_INPUT", "data must be an object");
   }
 
+  const validationErrors = validateAttestationData(schema, data);
+  if (validationErrors.length > 0) {
+    const summary = validationErrors
+      .map((error) => `Field "${error.schemaFieldName}" (${error.expectedType}) got ${error.providedType}`)
+      .join("; ");
+    throw new OmaTrustError("INVALID_INPUT", `Attestation data validation failed: ${summary}`, {
+      errors: validationErrors
+    });
+  }
+
   const fields = normalizeSchema(schema);
   const schemaString = schemaToString(fields);
   const encoder = new SchemaEncoder(schemaString);
@@ -59,11 +71,128 @@ export function encodeAttestationData(
     fields.map((field) => ({
       name: field.name,
       type: field.type,
-      value: (data as Record<string, unknown>)[field.name]
-    })) as never
+      value: data[field.name]
+    })) as SchemaItem[]
   );
 
   return encoded as Hex;
+}
+
+function getActualType(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? "number" : "non-finite-number";
+  }
+  return typeof value;
+}
+
+function isNumericValue(value: unknown, allowNegative: boolean): boolean {
+  if (typeof value === "bigint") {
+    return allowNegative || value >= 0n;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+      return false;
+    }
+    return allowNegative || value >= 0;
+  }
+
+  if (typeof value === "string") {
+    if (value.length === 0) {
+      return false;
+    }
+    const pattern = allowNegative ? /^-?\d+$/ : /^\d+$/;
+    return pattern.test(value);
+  }
+
+  return false;
+}
+
+function isHex(value: unknown): value is string {
+  return typeof value === "string" && /^0x[0-9a-fA-F]*$/.test(value);
+}
+
+function validateFieldValue(type: string, value: unknown): boolean {
+  const normalizedType = type.trim().toLowerCase();
+  const bytesNMatch = normalizedType.match(/^bytes([1-9]|[12]\d|3[0-2])$/);
+
+  if (/^uint\d*$/.test(normalizedType)) {
+    return isNumericValue(value, false);
+  }
+
+  if (/^int\d*$/.test(normalizedType)) {
+    return isNumericValue(value, true);
+  }
+
+  if (normalizedType === "string") {
+    return typeof value === "string";
+  }
+
+  if (normalizedType === "string[]") {
+    return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  }
+
+  if (normalizedType === "bool") {
+    return typeof value === "boolean";
+  }
+
+  if (normalizedType === "address") {
+    return typeof value === "string" && isAddress(value);
+  }
+
+  if (normalizedType === "bytes") {
+    return isHex(value) && (value.length - 2) % 2 === 0;
+  }
+
+  if (bytesNMatch) {
+    const expectedBytes = Number(bytesNMatch[1]);
+    return isHex(value) && value.length === 2 + expectedBytes * 2;
+  }
+
+  return true;
+}
+
+export function validateAttestationData(
+  schema: SchemaField[] | string,
+  data: Record<string, unknown>
+): AttestationValidationError[] {
+  if (!data || typeof data !== "object") {
+    return [{
+      schemaFieldName: "data",
+      expectedType: "object",
+      providedType: getActualType(data),
+      providedValue: data
+    }];
+  }
+
+  const fields = normalizeSchema(schema);
+  const errors: AttestationValidationError[] = [];
+
+  for (const field of fields) {
+    const value = data[field.name];
+    const isValid = validateFieldValue(field.type, value);
+    if (isValid) {
+      continue;
+    }
+
+    errors.push({
+      schemaFieldName: field.name,
+      expectedType: field.type,
+      providedType: getActualType(value),
+      providedValue: value
+    });
+  }
+
+  return errors;
 }
 
 export function decodeAttestationData(
@@ -95,22 +224,10 @@ export function decodeAttestationData(
 export function extractExpirationTime(
   data: Record<string, unknown>
 ): bigint | number | undefined {
-  const keys = ["expirationTime", "expiration", "validUntil", "expiresAt", "expires"];
-  for (const key of keys) {
-    const value = data[key];
-    if (value === undefined || value === null) {
-      continue;
-    }
-
-    if (typeof value === "bigint") {
-      return value;
-    }
-    if (typeof value === "number") {
-      return value;
-    }
-    if (typeof value === "string" && /^\d+$/.test(value)) {
-      return BigInt(value);
-    }
-  }
+  const value = data["expiresAt"];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
   return undefined;
 }
