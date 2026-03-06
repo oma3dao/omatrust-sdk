@@ -5,7 +5,17 @@ export default defineConfig({
     environment: "node",
     include: ["test/**/*.test.ts"],
     coverage: {
-      enabled: false
+      enabled: true,
+      provider: "v8",
+      reporter: ["text", "text-summary", "html"],
+      include: ["src/**/*.ts"],
+      exclude: ["**/*.browser.ts", "**/*.d.ts", "**/types.ts"],
+      thresholds: {
+        statements: 97,
+        branches: 94,
+        functions: 98,
+        lines: 97
+      }
     }
   }
 });
