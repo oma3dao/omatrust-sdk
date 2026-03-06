@@ -57,4 +57,22 @@ describe("eas adapter", () => {
   it("detects schema-not-found errors", () => {
     expect(isEasSchemaNotFoundError(new Error("Schema not found"))).toBe(true);
   });
+
+  it("returns false when err is not a record", () => {
+    expect(isEasSchemaNotFoundError(null)).toBe(false);
+    expect(isEasSchemaNotFoundError("string")).toBe(false);
+  });
+
+  it("returns false when err.message is not a string", () => {
+    expect(isEasSchemaNotFoundError({ message: 123 })).toBe(false);
+    expect(isEasSchemaNotFoundError({ message: null })).toBe(false);
+  });
+
+  it("returns false when err.message is empty", () => {
+    expect(isEasSchemaNotFoundError({ message: "" })).toBe(false);
+  });
+
+  it("is case-insensitive for schema not found", () => {
+    expect(isEasSchemaNotFoundError(new Error("SCHEMA NOT FOUND"))).toBe(true);
+  });
 });
