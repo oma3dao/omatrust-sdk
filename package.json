@@ -1,6 +1,6 @@
 {
   "name": "@oma3/omatrust",
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.9",
   "description": "Framework-agnostic TypeScript SDK for OMATrust",
   "license": "MIT",
   "type": "module",
@@ -43,6 +43,14 @@
       },
       "import": "./dist/app-registry/index.js",
       "require": "./dist/app-registry/index.cjs"
+    },
+    "./widgets": {
+      "types": {
+        "import": "./dist/widgets/index.d.ts",
+        "require": "./dist/widgets/index.d.cts"
+      },
+      "import": "./dist/widgets/index.js",
+      "require": "./dist/widgets/index.cjs"
     },
     "./package.json": "./package.json"
   },

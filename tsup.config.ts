@@ -6,7 +6,8 @@ export default defineConfig({
     "src/identity/index.ts",
     "src/reputation/index.ts",
     "src/reputation/index.browser.ts",
-    "src/app-registry/index.ts"
+    "src/app-registry/index.ts",
+    "src/widgets/index.ts"
   ],
   format: ["esm", "cjs"],
   dts: true,
