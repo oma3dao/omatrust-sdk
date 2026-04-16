@@ -47,7 +47,6 @@ function validSigningMessage(overrides: Record<string, unknown> = {}) {
 describe("widgets/bridge", () => {
   let iframe: HTMLIFrameElement;
   let source: { postMessage: ReturnType<typeof vi.fn> };
-  let messageHandler: ((event: MessageEvent) => void | Promise<void>) | undefined;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -75,26 +74,20 @@ describe("widgets/bridge", () => {
       configurable: true,
       value: source,
     });
-
-    vi.spyOn(window, "addEventListener").mockImplementation(
-      (type: string, listener: EventListenerOrEventListenerObject) => {
-        if (type === "message" && typeof listener === "function") {
-          messageHandler = listener as (event: MessageEvent) => void | Promise<void>;
-        }
-      }
-    );
   });
 
   async function dispatchMessage(
     data: Record<string, unknown>,
     options: { origin?: string; eventSource?: unknown } = {}
   ) {
-    const event = {
+    const event = new MessageEvent("message", {
       data,
       origin: options.origin ?? "https://widget.omatrust.org",
-      source: options.eventSource ?? source,
-    } as MessageEvent;
-    await messageHandler?.(event);
+      source: (options.eventSource ?? source) as WindowProxy,
+    });
+    window.dispatchEvent(event);
+    // Allow async bridge handlers (including delayed signer mocks) to settle.
+    await new Promise(resolve => setTimeout(resolve, 25));
   }
 
   it("responds to handshake with hostReady", async () => {
@@ -249,6 +242,34 @@ describe("widgets/bridge", () => {
 
     await dispatchMessage(
       validSigningMessage({
+        id: 123,
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        id: 123,
+        error: expect.stringContaining("Missing or invalid request id"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
+    await dispatchMessage(
+      validSigningMessage({
+        domain: null,
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        id: "req-1",
+        error: expect.stringContaining("Missing domain object"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
+    await dispatchMessage(
+      validSigningMessage({
         domain: {
           name: "BAD",
           version: "1.4.0",
@@ -266,6 +287,61 @@ describe("widgets/bridge", () => {
       }),
       "https://widget.omatrust.org"
     );
+
+    await dispatchMessage(
+      validSigningMessage({
+        domain: {
+          name: "EAS",
+          version: "0.0.0",
+          chainId: 66238,
+          verifyingContract: allowedContract,
+        },
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        error: expect.stringContaining("Unexpected domain version"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
+    await dispatchMessage(
+      validSigningMessage({
+        domain: {
+          name: "EAS",
+          version: "1.4.0",
+          chainId: 0,
+          verifyingContract: allowedContract,
+        },
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        error: expect.stringContaining("Invalid domain chainId"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
+    await dispatchMessage(
+      validSigningMessage({
+        domain: {
+          name: "EAS",
+          version: "1.4.0",
+          chainId: 66238,
+          verifyingContract: "0x1234",
+        },
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        error: expect.stringContaining("Invalid verifyingContract"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
     bridge.destroy();
   });
 
@@ -331,6 +407,41 @@ describe("widgets/bridge", () => {
       expect.objectContaining({
         type: OMATRUST_SIGNATURE_ERROR,
         error: expect.stringContaining("Invalid attester address"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
+    bridge.destroy();
+  });
+
+  it("rejects missing types and message objects", async () => {
+    const bridge = await createSigningBridge({
+      iframeId: "widget-frame",
+      signTypedData: vi.fn(),
+    });
+
+    await dispatchMessage(
+      validSigningMessage({
+        types: null,
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        error: expect.stringContaining("Missing types object"),
+      }),
+      "https://widget.omatrust.org"
+    );
+
+    await dispatchMessage(
+      validSigningMessage({
+        message: null,
+      })
+    );
+    expect(source.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: OMATRUST_SIGNATURE_ERROR,
+        error: expect.stringContaining("Missing message object"),
       }),
       "https://widget.omatrust.org"
     );
@@ -459,7 +570,7 @@ describe("widgets/bridge", () => {
   });
 
   it("destroy removes the message listener", async () => {
-    const removeSpy = vi.spyOn(window, "removeEventListener").mockImplementation(() => {});
+    const removeSpy = vi.spyOn(window, "removeEventListener");
     const bridge = await createSigningBridge({
       iframeId: "widget-frame",
       signTypedData: vi.fn(),

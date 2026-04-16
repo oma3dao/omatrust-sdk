@@ -101,6 +101,7 @@ describe("widgets/trust-policy", () => {
   });
 
   it("extractAllowlists returns deduplicated contracts and schemas", async () => {
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
     vi.resetModules();
     const mod = await import("../src/widgets/trust-policy");
 
