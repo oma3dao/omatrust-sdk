@@ -83,7 +83,9 @@ describe("widgets/bridge", () => {
     const event = new MessageEvent("message", {
       data,
       origin: options.origin ?? "https://widget.omatrust.org",
-      source: (options.eventSource ?? source) as WindowProxy,
+    });
+    Object.defineProperty(event, "source", {
+      value: options.eventSource ?? source,
     });
     window.dispatchEvent(event);
     // Allow async bridge handlers (including delayed signer mocks) to settle.
