@@ -84,6 +84,7 @@
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^2.1.9",
     "ethers": "^6.16.0",
+    "jsdom": "^29.0.2",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

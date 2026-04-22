@@ -13,12 +13,6 @@ export default defineConfig({
         "**/*.browser.ts",
         "**/*.d.ts",
         "**/types.ts",
-        // TEMPORARY: widgets module uses browser APIs (window, postMessage,
-        // HTMLIFrameElement) that require jsdom test environment.
-        // Tests to be added by test engineer — see omatrust-docs issue #4.
-        // Remove this exclusion once widget module tests are in place.
-        // Added: 2026-04-14 by @atom
-        "src/widgets/**",
       ],
       thresholds: {
         statements: 97,
