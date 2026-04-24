@@ -7,3 +7,4 @@ export * from "./evidence-pointer";
 export * from "./dns-txt.browser";
 export * from "./did-json";
 export * from "./eip712";
+export * from "./subject-ownership";

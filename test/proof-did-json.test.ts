@@ -3,6 +3,7 @@ import { OmaTrustError } from "../src/shared/errors";
 import {
   extractAddressesFromDidDocument,
   fetchDidDocument,
+  verifyDidJsonControllerDid,
   verifyDidDocumentControllerDid
 } from "../src/reputation/proof/did-json";
 
@@ -205,6 +206,52 @@ describe("proof/did-json", () => {
       await expect(fetchDidDocument("example.com")).rejects.toMatchObject({
         code: "NETWORK_ERROR",
         message: "DID document fetch failed"
+      });
+    });
+  });
+
+  describe("verifyDidJsonControllerDid", () => {
+    it("verifies controller DID through a fetched DID document", async () => {
+      const result = await verifyDidJsonControllerDid(
+        "example.com",
+        "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+        {
+          fetchDidDocument: vi.fn().mockResolvedValue({
+            verificationMethod: [
+              { blockchainAccountId: "eip155:1:0x1111111111111111111111111111111111111111" }
+            ]
+          })
+        }
+      );
+
+      expect(result.valid).toBe(true);
+    });
+
+    it("returns invalid when the DID document does not contain the controller address", async () => {
+      const result = await verifyDidJsonControllerDid(
+        "example.com",
+        "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+        {
+          fetchDidDocument: vi.fn().mockResolvedValue({
+            verificationMethod: [
+              { blockchainAccountId: "eip155:1:0x2222222222222222222222222222222222222222" }
+            ]
+          })
+        }
+      );
+
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain("No matching address");
+    });
+
+    it("throws INVALID_INPUT for an empty domain", async () => {
+      await expect(
+        verifyDidJsonControllerDid(
+          "",
+          "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
+        )
+      ).rejects.toMatchObject({
+        code: "INVALID_INPUT"
       });
     });
   });

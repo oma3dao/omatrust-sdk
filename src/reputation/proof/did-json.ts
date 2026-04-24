@@ -27,6 +27,10 @@ export async function fetchDidDocument(
   return body;
 }
 
+export interface VerifyDidJsonControllerDidOptions {
+  fetchDidDocument?: (domain: string) => Promise<Record<string, unknown>>;
+}
+
 export function extractAddressesFromDidDocument(didDocument: Record<string, unknown>): string[] {
   const methods = didDocument.verificationMethod;
   if (!Array.isArray(methods)) {
@@ -77,4 +81,20 @@ export function verifyDidDocumentControllerDid(
     valid: false,
     reason: `No matching address found in DID document (expected ${expectedAddress})`
   };
+}
+
+export async function verifyDidJsonControllerDid(
+  domain: string,
+  expectedControllerDid: Did,
+  options: VerifyDidJsonControllerDidOptions = {}
+): Promise<{ valid: boolean; reason?: string }> {
+  if (!domain || typeof domain !== "string") {
+    throw new OmaTrustError("INVALID_INPUT", "domain must be a non-empty string", { domain });
+  }
+
+  const didDocument = options.fetchDidDocument
+    ? await options.fetchDidDocument(domain)
+    : await fetchDidDocument(domain);
+
+  return verifyDidDocumentControllerDid(didDocument, expectedControllerDid);
 }

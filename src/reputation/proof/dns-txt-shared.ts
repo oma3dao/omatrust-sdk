@@ -1,10 +1,7 @@
-import { resolveTxt } from "node:dns/promises";
 import { normalizeDid } from "../../identity/did";
 import { OmaTrustError } from "../../shared/errors";
 import type { Did } from "../types";
 import { parseDnsTxtRecord } from "./dns-txt-record";
-
-export { parseDnsTxtRecord, buildDnsTxtRecord } from "./dns-txt-record";
 
 export interface VerifyDnsTxtControllerDidOptions {
   resolveTxt?: (host: string) => Promise<string[][]>;
@@ -20,13 +17,17 @@ export async function verifyDnsTxtControllerDid(
     throw new OmaTrustError("INVALID_INPUT", "domain must be a non-empty string", { domain });
   }
 
+  if (!options.resolveTxt) {
+    throw new OmaTrustError("NETWORK_ERROR", "No DNS TXT resolver was provided", { domain });
+  }
+
   const expected = normalizeDid(expectedControllerDid);
   const prefix = options.recordPrefix ?? "_controllers";
   const host = `${prefix}.${domain.toLowerCase().replace(/\.$/, "")}`;
 
   let records: string[][];
   try {
-    records = await (options.resolveTxt ?? resolveTxt)(host);
+    records = await options.resolveTxt(host);
   } catch (err) {
     throw new OmaTrustError("NETWORK_ERROR", "Failed to resolve DNS TXT records", { domain, err });
   }

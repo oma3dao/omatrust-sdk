@@ -24,7 +24,7 @@ export function extractDidIdentifier(did: Did): string | null {
 
 export function normalizeDomain(domain: string): string {
   assertString(domain, "domain", "INVALID_DID");
-  return domain.trim().toLowerCase().replace(/\.$/, "");
+  return domain.trim().toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
 }
 
 export function normalizeDidWeb(input: string): Did {

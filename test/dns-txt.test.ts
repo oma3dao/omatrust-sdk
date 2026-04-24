@@ -71,7 +71,7 @@ describe("proof/dns-txt", () => {
 
       expect(result).toBeInstanceOf(OmaTrustError);
       expect((result as OmaTrustError).code).toBe("NETWORK_ERROR");
-      expect(mockResolveTxt).toHaveBeenCalledWith("_omatrust.example.com");
+      expect(mockResolveTxt).toHaveBeenCalledWith("_controllers.example.com");
     });
 
     it("normalizes domain (lowercase, strips trailing dot)", async () => {
@@ -82,7 +82,7 @@ describe("proof/dns-txt", () => {
         "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
       );
 
-      expect(mockResolveTxt).toHaveBeenCalledWith("_omatrust.example.com");
+      expect(mockResolveTxt).toHaveBeenCalledWith("_controllers.example.com");
     });
 
     it("returns valid when v=1 record matches controller", async () => {
@@ -149,6 +149,24 @@ describe("proof/dns-txt", () => {
       const result = await verifyDnsTxtControllerDid("example.com", "did:web:example.com");
 
       expect(result.valid).toBe(true);
+    });
+
+    it("supports a custom resolver and record prefix", async () => {
+      const customResolver = vi.fn().mockResolvedValue([
+        ["v=1;controller=did:web:example.com"]
+      ]);
+
+      const result = await verifyDnsTxtControllerDid(
+        "example.com",
+        "did:web:example.com",
+        {
+          resolveTxt: customResolver,
+          recordPrefix: "_custom"
+        }
+      );
+
+      expect(result.valid).toBe(true);
+      expect(customResolver).toHaveBeenCalledWith("_custom.example.com");
     });
   });
 });

@@ -91,6 +91,11 @@ describe("identity/did – extended", () => {
       expect(normalizeDomain("  Example.COM  ")).toBe("example.com");
     });
 
+    it("strips a leading www prefix", () => {
+      expect(normalizeDomain("www.example.com")).toBe("example.com");
+      expect(normalizeDomain("WWW.Example.COM")).toBe("example.com");
+    });
+
     it("removes trailing dots", () => {
       expect(normalizeDomain("example.com.")).toBe("example.com");
     });
@@ -105,8 +110,16 @@ describe("identity/did – extended", () => {
       expect(normalizeDidWeb("did:web:Example.COM")).toBe("did:web:example.com");
     });
 
+    it("canonicalizes did:web identifiers with www hostnames", () => {
+      expect(normalizeDidWeb("did:web:www.Example.COM")).toBe("did:web:example.com");
+    });
+
     it("normalizes bare domains into did:web", () => {
       expect(normalizeDidWeb("Example.COM")).toBe("did:web:example.com");
+    });
+
+    it("normalizes bare www domains into canonical did:web", () => {
+      expect(normalizeDidWeb("www.Example.COM")).toBe("did:web:example.com");
     });
 
     it("preserves path components", () => {
@@ -233,6 +246,13 @@ describe("identity/did – extended", () => {
   describe("buildDidPkhFromCaip10", () => {
     it("builds did:pkh from CAIP-10 string", () => {
       expect(buildDidPkhFromCaip10("eip155:1:0xABC")).toBe("did:pkh:eip155:1:0xabc");
+    });
+  });
+
+  describe("buildDidWeb", () => {
+    it("builds canonical did:web identifiers without a leading www prefix", () => {
+      expect(buildDidWeb("www.example.com")).toBe("did:web:example.com");
+      expect(buildDidWeb("Example.COM")).toBe("did:web:example.com");
     });
   });
 
@@ -371,6 +391,20 @@ describe("identity/did – extended", () => {
       const hash1 = computeDidHash("did:web:Example.COM");
       const hash2 = computeDidHash("did:web:example.com");
       expect(hash1).toBe(hash2);
+    });
+
+    it("produces the same hash for www and non-www did:web forms", () => {
+      const withWww = computeDidHash("did:web:www.example.com");
+      const withoutWww = computeDidHash("did:web:example.com");
+      expect(withWww).toBe(withoutWww);
+    });
+  });
+
+  describe("didToAddress canonical equivalence", () => {
+    it("produces the same address for www and non-www did:web forms", () => {
+      const withWww = didToAddress("did:web:www.example.com");
+      const withoutWww = didToAddress("did:web:example.com");
+      expect(withWww).toBe(withoutWww);
     });
   });
 });
