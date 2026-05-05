@@ -12,15 +12,15 @@ import {
   getDomainFromDidWeb,
   isEvmDidPkh,
   normalizeDid
-} from "../../identity/did";
-import { OmaTrustError } from "../../shared/errors";
-import type { Did, Hex } from "../types";
-import { verifyDidJsonControllerDid } from "./did-json";
+} from "../identity/did";
+import { OmaTrustError } from "../shared/errors";
+import type { Did, Hex } from "./types";
+import { verifyDidJsonControllerDid } from "./proof/did-json";
 import {
   verifyDnsTxtControllerDid,
   type VerifyDnsTxtControllerDidOptions
-} from "./dns-txt-shared";
-import { calculateTransferAmount } from "./tx-encoded-value";
+} from "./proof/dns-txt-shared";
+import { calculateTransferAmount } from "./proof/tx-encoded-value";
 
 const EIP1967_ADMIN_SLOT =
   "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103" as const;

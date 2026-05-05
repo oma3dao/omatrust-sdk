@@ -1,5 +1,14 @@
 export { createSigningBridge, type SigningBridgeOptions, type SigningBridge } from "./bridge";
-export { fetchTrustPolicy, extractAllowlists, TRUST_POLICY_URL, type TrustPolicy, type ChainPolicy } from "./trust-policy";
+export {
+  fetchTrustAnchors,
+  extractAllowlists,
+  getChainAnchors,
+  getSchemaAnchor,
+  TRUST_ANCHORS_URL,
+  type TrustAnchors,
+  type ChainAnchors,
+  type ApprovedIssuer,
+} from "../shared/trust-anchors";
 export {
   OMATRUST_READY,
   OMATRUST_HOST_READY,

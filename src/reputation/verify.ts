@@ -84,7 +84,7 @@ function decodeJwtPayload(compactJws: string): Record<string, unknown> {
 }
 
 export async function verifyProof(params: VerifyProofParams): Promise<VerifyProofResult> {
-  const { proof, provider, expectedSubject, expectedController } = params;
+  const { proof, provider, expectedSubjectDid, expectedControllerDid } = params;
 
   try {
     switch (proof.proofType) {
@@ -92,11 +92,11 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         if (!provider) {
           return { valid: false, proofType: proof.proofType, reason: "Provider is required" };
         }
-        if (!expectedSubject || !expectedController) {
+        if (!expectedSubjectDid || !expectedControllerDid) {
           return {
             valid: false,
             proofType: proof.proofType,
-            reason: "expectedSubject and expectedController are required"
+            reason: "expectedSubjectDid and expectedControllerDid are required"
           };
         }
 
@@ -110,14 +110,14 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         }
 
         const expectedAmount = calculateTransferAmount(
-          expectedSubject,
-          expectedController,
+          expectedSubjectDid,
+          expectedControllerDid,
           chainId,
           getProofPurpose(proof)
         );
 
-        const subjectAddress = getAddress(extractAddressFromDid(expectedSubject));
-        const controllerAddress = getAddress(extractAddressFromDid(expectedController));
+        const subjectAddress = getAddress(extractAddressFromDid(expectedSubjectDid));
+        const controllerAddress = getAddress(extractAddressFromDid(expectedControllerDid));
 
         if (tx.from && getAddress(tx.from) !== subjectAddress) {
           return { valid: false, proofType: proof.proofType, reason: "Transaction sender mismatch" };
@@ -225,9 +225,9 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
           return { valid: false, proofType: proof.proofType, reason: `Evidence fetch failed (${response.status})` };
         }
 
-        if (object.url.endsWith("/.well-known/did.json") && expectedController) {
+        if (object.url.endsWith("/.well-known/did.json") && expectedControllerDid) {
           const didDoc = (await response.json()) as Record<string, unknown>;
-          const didCheck = verifyDidDocumentControllerDid(didDoc, expectedController);
+          const didCheck = verifyDidDocumentControllerDid(didDoc, expectedControllerDid);
           return {
             valid: didCheck.valid,
             proofType: proof.proofType,
@@ -236,10 +236,10 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         }
 
         const body = await response.text();
-        if (expectedController && !body.includes(expectedController)) {
+        if (expectedControllerDid && !body.includes(expectedControllerDid)) {
           try {
             const parsed = parseDnsTxtRecord(body);
-            if (parsed.controller !== expectedController) {
+            if (!parsed.controllers.includes(expectedControllerDid)) {
               return {
                 valid: false,
                 proofType: proof.proofType,
@@ -306,8 +306,8 @@ export async function verifyAttestation(
     const result = await verifyProof({
       proof,
       provider: params.provider,
-      expectedSubject: params.context?.subject as string | undefined,
-      expectedController: params.context?.controller as string | undefined
+      expectedSubjectDid: params.context?.subjectDid as string | undefined,
+      expectedControllerDid: params.context?.controllerDid as string | undefined
     });
 
     checks[proof.proofType] = result.valid;

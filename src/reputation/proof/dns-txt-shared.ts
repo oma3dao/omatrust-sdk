@@ -35,10 +35,10 @@ export async function verifyDnsTxtControllerDid(
   for (const recordParts of records) {
     const record = recordParts.join("");
     const parsed = parseDnsTxtRecord(record);
-    if (parsed.version === "1" && parsed.controller && normalizeDid(parsed.controller) === expected) {
+    if (parsed.version === "1" && parsed.controllers.some((c) => normalizeDid(c) === expected)) {
       return { valid: true, record };
     }
   }
 
-  return { valid: false, reason: "No TXT record matched expected controller DID" };
+  return { valid: false, reason: "Controller DID not found in the proper DNS TXT record" };
 }

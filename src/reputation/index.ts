@@ -8,5 +8,5 @@ export * from "./verify";
 export * from "./encode";
 export * from "./schema";
 export * from "./witness";
-
+export * from "./attester-authorization";
 export * from "./proof/index";

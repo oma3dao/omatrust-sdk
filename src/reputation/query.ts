@@ -143,7 +143,7 @@ export async function getAttestationsForDid(
     provider,
     fromBlock,
     toBlock,
-    { recipient: didToAddress(params.did), schemas: params.schemas }
+    { recipient: didToAddress(params.subjectDid), schemas: params.schemas }
   );
 }
 
