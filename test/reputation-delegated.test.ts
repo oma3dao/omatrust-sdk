@@ -249,11 +249,11 @@ describe("reputation/delegated", () => {
       }
     });
 
-    it("throws NETWORK_ERROR for non-ok response", async () => {
+    it("throws RELAY_ERROR for non-ok response", async () => {
       fetchMock.mockResolvedValueOnce({
         ok: false,
         status: 400,
-        json: () => Promise.resolve({ error: "bad request" })
+        json: () => Promise.resolve({ error: "bad request", code: "INVALID_SIGNATURE" })
       });
 
       try {
@@ -262,9 +262,36 @@ describe("reputation/delegated", () => {
           prepared: { delegatedRequest: {}, typedData: { domain: {}, types: {}, message: {} } },
           signature: "0xsig"
         });
+        expect.fail("should have thrown");
       } catch (err) {
         expect(err).toBeInstanceOf(OmaTrustError);
-        expect((err as OmaTrustError).code).toBe("NETWORK_ERROR");
+        const e = err as OmaTrustError;
+        expect(e.code).toBe("RELAY_ERROR");
+        expect(e.message).toContain("HTTP 400");
+        expect((e.details as { httpStatus: number }).httpStatus).toBe(400);
+        expect((e.details as { code: string }).code).toBe("INVALID_SIGNATURE");
+        expect((e.details as { error: string }).error).toBe("bad request");
+      }
+    });
+
+    it("throws RELAY_ERROR with message field when error is absent", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: () => Promise.resolve({ message: "nonce too low" })
+      });
+
+      try {
+        await submitDelegatedAttestation({
+          relayUrl: "https://relay.example.com/submit",
+          prepared: { delegatedRequest: {}, typedData: { domain: {}, types: {}, message: {} } },
+          signature: "0xsig"
+        });
+        expect.fail("should have thrown");
+      } catch (err) {
+        const e = err as OmaTrustError;
+        expect(e.code).toBe("RELAY_ERROR");
+        expect((e.details as { error: string }).error).toBe("nonce too low");
       }
     });
 
@@ -283,8 +310,95 @@ describe("reputation/delegated", () => {
         });
       } catch (err) {
         expect(err).toBeInstanceOf(OmaTrustError);
-        expect((err as OmaTrustError).code).toBe("NETWORK_ERROR");
+        expect((err as OmaTrustError).code).toBe("RELAY_ERROR");
       }
+    });
+
+    it("infers 'confirmed' status when relay returns blockNumber", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          uid: "0x" + "dd".repeat(32),
+          txHash: "0x" + "ee".repeat(32),
+          blockNumber: 12345,
+          chain: "eip155:8453"
+        })
+      });
+
+      const result = await submitDelegatedAttestation({
+        relayUrl: "https://relay.example.com/submit",
+        prepared: { delegatedRequest: {}, typedData: { domain: {}, types: {}, message: {} } },
+        signature: "0xsig"
+      });
+
+      expect(result.status).toBe("confirmed");
+      expect(result.relay?.blockNumber).toBe(12345);
+      expect(result.relay?.chain).toBe("eip155:8453");
+    });
+
+    it("infers 'confirmed' status when relay returns success: true", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          uid: "0x" + "dd".repeat(32),
+          success: true
+        })
+      });
+
+      const result = await submitDelegatedAttestation({
+        relayUrl: "https://relay.example.com/submit",
+        prepared: { delegatedRequest: {}, typedData: { domain: {}, types: {}, message: {} } },
+        signature: "0xsig"
+      });
+
+      expect(result.status).toBe("confirmed");
+      expect(result.relay?.success).toBe(true);
+    });
+
+    it("includes relay metadata in result", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          uid: "0x" + "dd".repeat(32),
+          txHash: "0x" + "ee".repeat(32),
+          status: "confirmed",
+          blockNumber: 99,
+          chain: "eip155:1",
+          success: true,
+          gasUsed: "21000"
+        })
+      });
+
+      const result = await submitDelegatedAttestation({
+        relayUrl: "https://relay.example.com/submit",
+        prepared: { delegatedRequest: {}, typedData: { domain: {}, types: {}, message: {} } },
+        signature: "0xsig"
+      });
+
+      expect(result.relay).toBeDefined();
+      expect(result.relay!.blockNumber).toBe(99);
+      expect(result.relay!.chain).toBe("eip155:1");
+      expect(result.relay!.success).toBe(true);
+      expect(result.relay!.gasUsed).toBe("21000");
+    });
+
+    it("omits relay field when no extra metadata is present", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          uid: "0x" + "dd".repeat(32),
+          txHash: "0x" + "ee".repeat(32),
+          status: "confirmed"
+        })
+      });
+
+      const result = await submitDelegatedAttestation({
+        relayUrl: "https://relay.example.com/submit",
+        prepared: { delegatedRequest: {}, typedData: { domain: {}, types: {}, message: {} } },
+        signature: "0xsig"
+      });
+
+      expect(result.relay).toBeUndefined();
     });
 
     it("serializes bigint values in request body", async () => {

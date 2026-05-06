@@ -194,10 +194,25 @@ export type SubmitDelegatedAttestationParams = {
   attester?: Hex;
 };
 
+export type RelayMetadata = {
+  blockNumber?: number;
+  chain?: string;
+  success?: boolean;
+  [key: string]: unknown;
+};
+
+export type RelayErrorDetails = {
+  httpStatus: number;
+  code?: string;
+  error?: string;
+  payload?: Record<string, unknown>;
+};
+
 export type SubmitDelegatedAttestationResult = {
   uid: Hex;
   txHash?: Hex;
   status: "submitted" | "confirmed";
+  relay?: RelayMetadata;
 };
 
 export type GetAttestationParams = {
@@ -347,10 +362,10 @@ export type AttesterAuthorizationResult = {
    * closes the window. Null if the window is still open.
    */
   until: bigint | null;
-  /** Whether live DNS/did.json currently confirms control */
+  /** Whether live DNS/did.json or contract ownership currently confirms control */
   currentlyVerified: boolean;
   /** Verification method for live check */
-  liveMethod: "dns" | "did-document" | null;
+  liveMethod: "dns" | "did-document" | "contract-ownership" | null;
   /** Controller witness attestations found (oldest first) */
   controllerWitnesses: ControllerWitnessEvidence[];
   /** Key binding attestation UID if one exists */
@@ -363,4 +378,10 @@ export type AttesterAuthorizationResult = {
    * - "not-required": no key binding exists or no purpose filter was applied
    */
   keyPurposeStatus: "matched" | "unknown" | "mismatch" | "not-required";
+  /**
+   * Whether the key binding includes a verified transfer proof.
+   * Only relevant for did:pkh subjects where the attester is authorized
+   * via a key binding backed by a deterministic native transfer.
+   */
+  transferProofVerified?: boolean;
 };

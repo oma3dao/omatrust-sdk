@@ -7,6 +7,8 @@ import type {
   Hex,
   PrepareDelegatedAttestationParams,
   PrepareDelegatedAttestationResult,
+  RelayErrorDetails,
+  RelayMetadata,
   SubmitDelegatedAttestationParams,
   SubmitDelegatedAttestationResult
 } from "./types";
@@ -190,19 +192,40 @@ export async function submitDelegatedAttestation(
   }
 
   if (!response.ok) {
-    throw new OmaTrustError("NETWORK_ERROR", "Relay submission failed", {
-      status: response.status,
+    const relayError: RelayErrorDetails = {
+      httpStatus: response.status,
+      code: payload.code as string | undefined,
+      error: (payload.error as string | undefined) ?? (payload.message as string | undefined),
       payload
-    });
+    };
+    throw new OmaTrustError("RELAY_ERROR", `Relay submission failed (HTTP ${response.status})`, relayError);
   }
 
   const uid = ((payload.uid as string | undefined) ?? ZERO_UID) as Hex;
   const txHash = payload.txHash as Hex | undefined;
-  const status = (payload.status as "submitted" | "confirmed" | undefined) ?? "submitted";
 
-  return {
-    uid,
-    txHash,
-    status
-  };
+  // Infer status from relay response semantics
+  const hasConfirmationSignals =
+    payload.status === "confirmed" ||
+    payload.success === true ||
+    typeof payload.blockNumber === "number";
+  const status: "submitted" | "confirmed" = hasConfirmationSignals ? "confirmed" : "submitted";
+
+  // Extract relay metadata (blockNumber, chain, success, and any extra fields)
+  const relay: RelayMetadata = {};
+  if (typeof payload.blockNumber === "number") relay.blockNumber = payload.blockNumber;
+  if (typeof payload.chain === "string") relay.chain = payload.chain;
+  if (typeof payload.success === "boolean") relay.success = payload.success;
+  // Preserve any additional relay-specific fields consumers might need
+  for (const key of Object.keys(payload)) {
+    if (!["uid", "txHash", "status", "blockNumber", "chain", "success"].includes(key)) {
+      relay[key] = payload[key];
+    }
+  }
+
+  const result: SubmitDelegatedAttestationResult = { uid, txHash, status };
+  if (Object.keys(relay).length > 0) {
+    result.relay = relay;
+  }
+  return result;
 }

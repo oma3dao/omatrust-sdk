@@ -3,16 +3,26 @@
  * was authorized to file subject-scoped attestations.
  *
  * This is the "read/verify" counterpart to requestControllerWitness (write).
+ *
+ * For did:web subjects:
+ *   - Controller witness attestations (strongest durable evidence)
+ *   - Key binding with purpose check
+ *   - Live DNS TXT / did.json verification (current-point-in-time fallback)
+ *
+ * For did:pkh subjects (smart contracts):
+ *   - Direct subject ownership check (owner/admin/EIP-1967)
+ *   - Key binding with transfer proof verification
  */
 
-import { didToAddress, getDomainFromDidWeb, extractDidMethod, extractAddressFromDid } from "../identity/did";
+import { didToAddress, getDomainFromDidWeb, extractDidMethod, extractAddressFromDid, isEvmDidPkh, getAddressFromDidPkh, getChainIdFromDidPkh } from "../identity/did";
 import { parseCaip2 } from "../identity/caip";
 import { EAS } from "@ethereum-attestation-service/eas-sdk";
-import { Contract } from "ethers";
+import { Contract, getAddress } from "ethers";
 import { OmaTrustError } from "../shared/errors";
 import { fetchTrustAnchors, getChainAnchors } from "../shared/trust-anchors";
 import { verifyDnsTxtControllerDid } from "./proof/dns-txt-shared";
 import { verifyDidDocumentControllerDid } from "./proof/did-json";
+import { discoverContractOwner, verifyTransferProof, type ContractOwnershipProvider } from "./contract-ownership";
 import { decodeAttestationData } from "./encode";
 import type {
   AttestationQueryResult,
@@ -29,10 +39,14 @@ const DEFAULT_PURPOSES: W3CKeyPurpose[] = ["authentication", "assertionMethod"];
 /**
  * Determine the authorization window for an attester-subject pair.
  *
- * Checks:
+ * For did:web subjects, checks:
  * 1. On-chain controller-witness attestations (strongest evidence)
  * 2. On-chain key-binding revocation and purpose status
  * 3. Live DNS TXT / did.json verification (current-point-in-time fallback)
+ *
+ * For did:pkh subjects (smart contracts), checks:
+ * 1. Direct subject ownership (attester is the contract owner/admin)
+ * 2. Key binding with transfer proof verification
  *
  * Returns the authorization window so the consumer can filter attestations
  * by timestamp without repeated on-chain queries.
@@ -144,9 +158,11 @@ export async function getAttesterAuthorization(
     }
   }
 
-  // Live DNS/did.json check
+  // Live DNS/did.json check (did:web) or contract ownership check (did:pkh)
   let currentlyVerified = false;
-  let liveMethod: "dns" | "did-document" | null = null;
+  let liveMethod: "dns" | "did-document" | "contract-ownership" | null = null;
+  let transferProofVerified = false;
+  let transferProofAnchor: bigint | null = null;
 
   const didMethod = extractDidMethod(params.subjectDid);
   if (didMethod === "web") {
@@ -182,18 +198,81 @@ export async function getAttesterAuthorization(
         }
       }
     }
+  } else if (didMethod === "pkh" && isEvmDidPkh(params.subjectDid)) {
+    // For did:pkh subjects: check direct contract ownership, then key binding transfer proof
+    const subjectContractAddress = getAddressFromDidPkh(params.subjectDid);
+    const chainIdStr = getChainIdFromDidPkh(params.subjectDid);
+    const chainId = chainIdStr ? Number(chainIdStr) : null;
+
+    if (subjectContractAddress && chainId) {
+      // Check if the attester directly owns the contract (simple case)
+      const ownerAddress = await discoverContractOwner(
+        provider as unknown as ContractOwnershipProvider,
+        subjectContractAddress
+      );
+
+      if (ownerAddress && getAddress(ownerAddress) === getAddress(params.attester)) {
+        currentlyVerified = true;
+        liveMethod = "contract-ownership";
+      }
+
+      // If not the direct owner, check key binding transfer proof
+      if (!currentlyVerified && keyBindingUid) {
+        // Find the key binding attestation data to look for a transfer proof
+        const relevantKeyBinding = await findKeyBindingWithTransferProof(
+          keyBindingSchemaUid!,
+          easContractAddress,
+          provider,
+          subjectAddress,
+          attesterLower,
+          params.fromBlock ?? 0
+        );
+
+        if (relevantKeyBinding) {
+          const proofTxHash = relevantKeyBinding.data?.proofTxHash as string | undefined;
+          if (proofTxHash && /^0x[0-9a-fA-F]{64}$/.test(proofTxHash)) {
+            // Verify the transfer proof: tx must be from the contract owner to the attester
+            // with the deterministic proof amount
+            const verified = await verifyTransferProof(
+              provider as unknown as ContractOwnershipProvider,
+              proofTxHash as Hex,
+              params.subjectDid,
+              params.attester,
+              chainId
+            );
+            if (verified) {
+              transferProofVerified = true;
+              // Use the key binding attestation time as the anchor —
+              // the transfer happened before the key binding was filed,
+              // so this is a conservative (later) bound.
+              transferProofAnchor = relevantKeyBinding.time;
+            }
+          }
+        }
+      }
+    }
   }
 
   // Build result
-  const anchoredFrom = relevantWitnesses.length > 0 ? relevantWitnesses[0].time : null;
+  // anchoredFrom: earliest durable evidence timestamp
+  // - Controller witnesses (did:web): time of first witness
+  // - Transfer proof (did:pkh): time of key binding attestation (conservative bound)
+  const witnessAnchor = relevantWitnesses.length > 0 ? relevantWitnesses[0].time : null;
+  const anchoredFrom = witnessAnchor ?? transferProofAnchor;
 
   // Determine authorization:
   // - Has controller witnesses and window is not closed → authorized
-  // - No witnesses but currently verified via DNS/did.json → authorized
+  // - No witnesses but currently verified via DNS/did.json/contract-ownership → authorized
+  // - Key binding with verified transfer proof and window not closed → authorized
   // - Key purpose mismatch disqualifies even if witnesses exist
   const purposeBlocks = keyPurposeStatus === "mismatch";
   const hasOpenWindow = relevantWitnesses.length > 0 && until === null;
-  const authorized = !purposeBlocks && (hasOpenWindow || (currentlyVerified && until === null));
+  const hasKeyBindingWithProof = keyBindingUid !== null && transferProofVerified && until === null;
+  const authorized = !purposeBlocks && (
+    hasOpenWindow ||
+    (currentlyVerified && until === null) ||
+    hasKeyBindingWithProof
+  );
 
   return {
     authorized,
@@ -204,6 +283,7 @@ export async function getAttesterAuthorization(
     controllerWitnesses,
     keyBindingUid,
     keyPurposeStatus,
+    transferProofVerified: transferProofVerified || undefined,
   };
 }
 
@@ -336,4 +416,37 @@ async function defaultFetchDidDocument(domain: string): Promise<Record<string, u
     throw new OmaTrustError("NETWORK_ERROR", `DID document fetch failed: ${res.status}`, { domain });
   }
   return (await res.json()) as Record<string, unknown>;
+}
+
+/**
+ * Find the key binding attestation that includes a transfer proof for this attester.
+ */
+async function findKeyBindingWithTransferProof(
+  keyBindingSchemaUid: Hex,
+  easContractAddress: Hex,
+  provider: never,
+  subjectAddress: string,
+  attesterLower: string,
+  fromBlock: number
+): Promise<AttestationQueryResult | null> {
+  const keyBindings = await queryByRecipientAndSchema(
+    easContractAddress,
+    provider,
+    subjectAddress,
+    [keyBindingSchemaUid],
+    fromBlock
+  );
+
+  // Find key bindings for this attester that have a proofTxHash
+  const withProof = keyBindings
+    .filter((att) => {
+      const boundAddress = att.data?.boundAddress ?? att.data?.wallet;
+      const matchesAttester = typeof boundAddress === "string"
+        ? boundAddress.toLowerCase() === attesterLower
+        : att.attester.toLowerCase() === attesterLower;
+      return matchesAttester && typeof att.data?.proofTxHash === "string";
+    })
+    .sort((a, b) => Number(b.time - a.time)); // newest first
+
+  return withProof[0] ?? null;
 }
