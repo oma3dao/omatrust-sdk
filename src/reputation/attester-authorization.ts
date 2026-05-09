@@ -1,6 +1,6 @@
 /**
- * Attester Authorization — verifies the time window during which an attester
- * was authorized to file subject-scoped attestations.
+ * Controller Authorization — verifies the time window during which a controller
+ * was authorized for a subject DID.
  *
  * This is the "read/verify" counterpart to requestControllerWitness (write).
  *
@@ -12,23 +12,27 @@
  * For did:pkh subjects (smart contracts):
  *   - Direct subject ownership check (owner/admin/EIP-1967)
  *   - Key binding with transfer proof verification
+ *   - NOTE: Only EVM chains are currently supported for contract ownership checks.
+ *     Non-EVM did:pkh subjects (e.g. Solana) will need chain-specific verification.
  */
 
-import { didToAddress, getDomainFromDidWeb, extractDidMethod, extractAddressFromDid, isEvmDidPkh, getAddressFromDidPkh, getChainIdFromDidPkh } from "../identity/did";
-import { parseCaip2 } from "../identity/caip";
+import { didToAddress, getDomainFromDidWeb, extractDidMethod, isEvmDidPkh, getAddressFromDidPkh, getChainIdFromDidPkh, normalizeDid } from "../identity/did";
+import { isSameControllerId, extractControllerEvmAddress } from "../identity/controller-id";
+import { didJwkToJwk, publicJwkEquals } from "../identity/jwk";
 import { EAS } from "@ethereum-attestation-service/eas-sdk";
 import { Contract, getAddress } from "ethers";
 import { OmaTrustError } from "../shared/errors";
 import { fetchTrustAnchors, getChainAnchors } from "../shared/trust-anchors";
+import { fetchDidDocument } from "../shared/did-document";
 import { verifyDnsTxtControllerDid } from "./proof/dns-txt-shared";
 import { verifyDidDocumentControllerDid } from "./proof/did-json";
 import { discoverContractOwner, verifyTransferProof, type ContractOwnershipProvider } from "./contract-ownership";
 import { decodeAttestationData } from "./encode";
 import type {
   AttestationQueryResult,
-  AttesterAuthorizationResult,
+  ControllerAuthorizationResult,
   ControllerWitnessEvidence,
-  GetAttesterAuthorizationParams,
+  GetControllerAuthorizationParams,
   Hex,
   W3CKeyPurpose,
 } from "./types";
@@ -37,7 +41,7 @@ const DEFAULT_CHAIN = "eip155:6623";
 const DEFAULT_PURPOSES: W3CKeyPurpose[] = ["authentication", "assertionMethod"];
 
 /**
- * Determine the authorization window for an attester-subject pair.
+ * Determine the authorization window for a controller-subject pair.
  *
  * For did:web subjects, checks:
  * 1. On-chain controller-witness attestations (strongest evidence)
@@ -45,17 +49,24 @@ const DEFAULT_PURPOSES: W3CKeyPurpose[] = ["authentication", "assertionMethod"];
  * 3. Live DNS TXT / did.json verification (current-point-in-time fallback)
  *
  * For did:pkh subjects (smart contracts), checks:
- * 1. Direct subject ownership (attester is the contract owner/admin)
+ * 1. Direct subject ownership (controller is the contract owner/admin)
  * 2. Key binding with transfer proof verification
  *
  * Returns the authorization window so the consumer can filter attestations
  * by timestamp without repeated on-chain queries.
  */
-export async function getAttesterAuthorization(
-  params: GetAttesterAuthorizationParams
-): Promise<AttesterAuthorizationResult> {
+export async function getControllerAuthorization(
+  params: GetControllerAuthorizationParams
+): Promise<ControllerAuthorizationResult> {
   const chain = params.chain ?? DEFAULT_CHAIN;
   const purposes = params.purpose && params.purpose.length > 0 ? params.purpose : DEFAULT_PURPOSES;
+
+  // Normalize the controller DID for consistent matching
+  const controllerDid = normalizeDid(params.controllerDid);
+  const controllerMethod = extractDidMethod(controllerDid);
+
+  // Extract an EVM address from the controller DID when possible (did:pkh:eip155 only)
+  const controllerEvmAddress = extractControllerEvmAddress(controllerDid);
 
   // Fetch trust anchors once (cached after first call)
   const anchors = await fetchTrustAnchors();
@@ -63,9 +74,6 @@ export async function getAttesterAuthorization(
 
   // Resolve EAS contract address
   const easContractAddress = params.easContractAddress ?? (chainAnchors.easContract as Hex);
-
-  // Resolve CAIP-2 reference for DID construction
-  const parsed = parseCaip2(chain);
 
   const provider = params.provider as never;
 
@@ -75,7 +83,6 @@ export async function getAttesterAuthorization(
 
   // Query controller-witness attestations where recipient = subject DID address
   const subjectAddress = didToAddress(params.subjectDid);
-  const attesterLower = params.attester.toLowerCase();
 
   let relevantWitnesses: AttestationQueryResult[] = [];
 
@@ -88,16 +95,11 @@ export async function getAttesterAuthorization(
       params.fromBlock ?? 0
     );
 
-    // Filter to witnesses that reference this attester's address as the controller
+    // Filter to witnesses that reference this controller DID
     relevantWitnesses = rawWitnesses.filter((att) => {
-      const controllerDid = att.data?.controller ?? att.data?.controllerDid;
-      if (typeof controllerDid !== "string") return false;
-      try {
-        const controllerAddress = extractAddressFromDid(controllerDid);
-        return controllerAddress.toLowerCase() === attesterLower;
-      } catch {
-        return false;
-      }
+      const witnessController = att.data?.controller;
+      if (typeof witnessController !== "string") return false;
+      return isSameControllerId(witnessController, controllerDid);
     });
 
     // Sort by time ascending (oldest first)
@@ -115,7 +117,7 @@ export async function getAttesterAuthorization(
   // Check key binding revocation and purpose
   let keyBindingUid: Hex | null = null;
   let until: bigint | null = null;
-  let keyPurposeStatus: AttesterAuthorizationResult["keyPurposeStatus"] = "not-required";
+  let keyPurposeStatus: ControllerAuthorizationResult["keyPurposeStatus"] = "not-required";
 
   if (keyBindingSchemaUid) {
     const keyBindings = await queryByRecipientAndSchema(
@@ -126,15 +128,9 @@ export async function getAttesterAuthorization(
       params.fromBlock ?? 0
     );
 
-    // Find key bindings for this attester, take the latest one
+    // Find key bindings for this controller by matching keyId or publicKeyJwk
     const relevantKeyBindings = keyBindings
-      .filter((att) => {
-        const boundAddress = att.data?.boundAddress ?? att.data?.wallet;
-        if (typeof boundAddress === "string") {
-          return boundAddress.toLowerCase() === attesterLower;
-        }
-        return att.attester.toLowerCase() === attesterLower;
-      })
+      .filter((att) => controllerMatchesKeyBinding(att, controllerDid, controllerMethod))
       .sort((a, b) => Number(b.time - a.time)); // newest first
 
     const relevantKeyBinding = relevantKeyBindings[0] ?? null;
@@ -147,7 +143,7 @@ export async function getAttesterAuthorization(
         until = relevantKeyBinding.revocationTime;
       }
 
-      // Check key purpose (always an array)
+      // Check key purpose
       const keyPurposes = relevantKeyBinding.data?.keyPurpose;
       if (!Array.isArray(keyPurposes) || keyPurposes.length === 0) {
         keyPurposeStatus = "unknown";
@@ -158,19 +154,17 @@ export async function getAttesterAuthorization(
     }
   }
 
-  // Live DNS/did.json check (did:web) or contract ownership check (did:pkh)
+  // Live DNS/did.json check (did:web subjects) or contract ownership check (did:pkh subjects)
   let currentlyVerified = false;
   let liveMethod: "dns" | "did-document" | "contract-ownership" | null = null;
   let transferProofVerified = false;
   let transferProofAnchor: bigint | null = null;
 
-  const didMethod = extractDidMethod(params.subjectDid);
-  if (didMethod === "web") {
+  const subjectMethod = extractDidMethod(params.subjectDid);
+  if (subjectMethod === "web") {
     const domain = getDomainFromDidWeb(params.subjectDid);
     if (domain) {
-      const controllerDid = `did:pkh:eip155:${parsed.reference}:${params.attester}`;
-
-      // Try DNS TXT
+      // Try DNS TXT — pass the controllerDid directly
       try {
         const dnsResult = await verifyDnsTxtControllerDid(domain, controllerDid, {
           resolveTxt: params.resolveTxt,
@@ -186,7 +180,7 @@ export async function getAttesterAuthorization(
       // Try did.json if DNS didn't work
       if (!currentlyVerified) {
         try {
-          const fetchDoc = params.fetchDidDocument ?? defaultFetchDidDocument;
+          const fetchDoc = params.fetchDidDocument ?? fetchDidDocument;
           const didDoc = await fetchDoc(domain);
           const didJsonResult = verifyDidDocumentControllerDid(didDoc, controllerDid);
           if (didJsonResult.valid) {
@@ -198,73 +192,72 @@ export async function getAttesterAuthorization(
         }
       }
     }
-  } else if (didMethod === "pkh" && isEvmDidPkh(params.subjectDid)) {
-    // For did:pkh subjects: check direct contract ownership, then key binding transfer proof
-    const subjectContractAddress = getAddressFromDidPkh(params.subjectDid);
-    const chainIdStr = getChainIdFromDidPkh(params.subjectDid);
-    const chainId = chainIdStr ? Number(chainIdStr) : null;
+  } else if (subjectMethod === "pkh") {
+    if (isEvmDidPkh(params.subjectDid) && controllerEvmAddress) {
+      // EVM contract ownership check
+      const subjectContractAddress = getAddressFromDidPkh(params.subjectDid);
+      const subjectChainId = getChainIdFromDidPkh(params.subjectDid);
+      const chainIdNum = subjectChainId ? Number(subjectChainId) : null;
 
-    if (subjectContractAddress && chainId) {
-      // Check if the attester directly owns the contract (simple case)
-      const ownerAddress = await discoverContractOwner(
-        provider as unknown as ContractOwnershipProvider,
-        subjectContractAddress
-      );
-
-      if (ownerAddress && getAddress(ownerAddress) === getAddress(params.attester)) {
-        currentlyVerified = true;
-        liveMethod = "contract-ownership";
-      }
-
-      // If not the direct owner, check key binding transfer proof
-      if (!currentlyVerified && keyBindingUid) {
-        // Find the key binding attestation data to look for a transfer proof
-        const relevantKeyBinding = await findKeyBindingWithTransferProof(
-          keyBindingSchemaUid!,
-          easContractAddress,
-          provider,
-          subjectAddress,
-          attesterLower,
-          params.fromBlock ?? 0
+      if (subjectContractAddress && chainIdNum) {
+        // Check if the controller directly owns the contract
+        const ownerAddress = await discoverContractOwner(
+          provider as unknown as ContractOwnershipProvider,
+          subjectContractAddress
         );
 
-        if (relevantKeyBinding) {
-          const proofTxHash = relevantKeyBinding.data?.proofTxHash as string | undefined;
-          if (proofTxHash && /^0x[0-9a-fA-F]{64}$/.test(proofTxHash)) {
-            // Verify the transfer proof: tx must be from the contract owner to the attester
-            // with the deterministic proof amount
-            const verified = await verifyTransferProof(
-              provider as unknown as ContractOwnershipProvider,
-              proofTxHash as Hex,
-              params.subjectDid,
-              params.attester,
-              chainId
-            );
-            if (verified) {
-              transferProofVerified = true;
-              // Use the key binding attestation time as the anchor —
-              // the transfer happened before the key binding was filed,
-              // so this is a conservative (later) bound.
-              transferProofAnchor = relevantKeyBinding.time;
+        if (ownerAddress && getAddress(ownerAddress) === getAddress(controllerEvmAddress)) {
+          currentlyVerified = true;
+          liveMethod = "contract-ownership";
+        }
+
+        // If not the direct owner, check key binding transfer proof
+        if (!currentlyVerified && keyBindingUid) {
+          const relevantKeyBinding = await findKeyBindingWithTransferProof(
+            keyBindingSchemaUid!,
+            easContractAddress,
+            provider,
+            subjectAddress,
+            controllerDid,
+            controllerMethod,
+            params.fromBlock ?? 0
+          );
+
+          if (relevantKeyBinding) {
+            const proofTxHash = relevantKeyBinding.data?.proofTxHash as string | undefined;
+            if (proofTxHash && /^0x[0-9a-fA-F]{64}$/.test(proofTxHash)) {
+              const verified = await verifyTransferProof(
+                provider as unknown as ContractOwnershipProvider,
+                proofTxHash as Hex,
+                params.subjectDid,
+                controllerEvmAddress,
+                chainIdNum
+              );
+              if (verified) {
+                transferProofVerified = true;
+                transferProofAnchor = relevantKeyBinding.time;
+              }
             }
           }
         }
       }
+    } else {
+      // TODO: Non-EVM did:pkh subjects (e.g. Solana) need chain-specific
+      // ownership verification. For now, these subjects cannot be verified
+      // via contract ownership or transfer proof. Controller witnesses and
+      // key bindings still apply.
     }
   }
 
   // Build result
-  // anchoredFrom: earliest durable evidence timestamp
-  // - Controller witnesses (did:web): time of first witness
-  // - Transfer proof (did:pkh): time of key binding attestation (conservative bound)
   const witnessAnchor = relevantWitnesses.length > 0 ? relevantWitnesses[0].time : null;
   const anchoredFrom = witnessAnchor ?? transferProofAnchor;
 
-  // Determine authorization:
-  // - Has controller witnesses and window is not closed → authorized
-  // - No witnesses but currently verified via DNS/did.json/contract-ownership → authorized
-  // - Key binding with verified transfer proof and window not closed → authorized
-  // - Key purpose mismatch disqualifies even if witnesses exist
+  // Authorization requires at least one of:
+  // - Controller witnesses with open window
+  // - Live verification (DNS/did.json/contract-ownership)
+  // - Key binding with verified transfer proof
+  // Key purpose mismatch blocks authorization regardless.
   const purposeBlocks = keyPurposeStatus === "mismatch";
   const hasOpenWindow = relevantWitnesses.length > 0 && until === null;
   const hasKeyBindingWithProof = keyBindingUid !== null && transferProofVerified && until === null;
@@ -290,6 +283,46 @@ export async function getAttesterAuthorization(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Check if a key binding attestation matches the requested controller DID.
+ *
+ * Matches by:
+ * 1. keyId field — uses isSameControllerId for DID comparison
+ * 2. publicKeyJwk field — for did:jwk controllers, compare the JWK material
+ */
+function controllerMatchesKeyBinding(
+  att: AttestationQueryResult,
+  controllerDid: string,
+  controllerMethod: string | null
+): boolean {
+  const keyId = att.data?.keyId;
+
+  // Match by keyId (DID comparison via isSameControllerId)
+  if (typeof keyId === "string") {
+    if (isSameControllerId(keyId, controllerDid)) {
+      return true;
+    }
+  }
+
+  // Match by publicKeyJwk (for did:jwk controllers)
+  if (controllerMethod === "jwk") {
+    const publicKeyJwkRaw = att.data?.publicKeyJwk;
+    if (publicKeyJwkRaw) {
+      try {
+        const onChainJwk = typeof publicKeyJwkRaw === "string"
+          ? JSON.parse(publicKeyJwkRaw)
+          : publicKeyJwkRaw;
+        const controllerJwk = didJwkToJwk(controllerDid);
+        return publicJwkEquals(onChainJwk, controllerJwk);
+      } catch {
+        // JWK parsing or comparison failed
+      }
+    }
+  }
+
+  return false;
+}
 
 const EAS_EVENT_ABI = [
   "event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID)",
@@ -352,7 +385,7 @@ async function queryByRecipientAndSchema(
     const attestation = (await eas.getAttestation(uid)) as unknown as Record<string, unknown> | null;
     if (!attestation || !attestation.uid) continue;
 
-    // Decode attestation data
+    // Decode attestation data — try controller-witness schema first, then key-binding
     let data: Record<string, unknown> = {};
     const rawData = attestation.data as Hex | undefined;
     if (rawData && rawData !== "0x") {
@@ -364,18 +397,11 @@ async function queryByRecipientAndSchema(
       } catch {
         try {
           data = decodeAttestationData(
-            "string subject, address boundAddress, string[] keyPurpose",
+            "string subject, string keyId, string publicKeyJwk, string[] keyPurpose, string[] proofs, uint256 issuedAt, uint256 effectiveAt, uint256 expiresAt",
             rawData
           );
         } catch {
-          try {
-            data = decodeAttestationData(
-              "string subject, address boundAddress",
-              rawData
-            );
-          } catch {
-            // Leave data empty
-          }
+          // Leave data empty — unknown schema format
         }
       }
     }
@@ -404,29 +430,16 @@ async function queryByRecipientAndSchema(
   return results;
 }
 
-async function defaultFetchDidDocument(domain: string): Promise<Record<string, unknown>> {
-  const url = `https://${domain}/.well-known/did.json`;
-  let res: Response;
-  try {
-    res = await fetch(url);
-  } catch (err) {
-    throw new OmaTrustError("NETWORK_ERROR", "Failed to fetch DID document", { domain, err });
-  }
-  if (!res.ok) {
-    throw new OmaTrustError("NETWORK_ERROR", `DID document fetch failed: ${res.status}`, { domain });
-  }
-  return (await res.json()) as Record<string, unknown>;
-}
-
 /**
- * Find the key binding attestation that includes a transfer proof for this attester.
+ * Find the key binding attestation that includes a transfer proof for this controller.
  */
 async function findKeyBindingWithTransferProof(
   keyBindingSchemaUid: Hex,
   easContractAddress: Hex,
   provider: never,
   subjectAddress: string,
-  attesterLower: string,
+  controllerDid: string,
+  controllerMethod: string | null,
   fromBlock: number
 ): Promise<AttestationQueryResult | null> {
   const keyBindings = await queryByRecipientAndSchema(
@@ -437,14 +450,16 @@ async function findKeyBindingWithTransferProof(
     fromBlock
   );
 
-  // Find key bindings for this attester that have a proofTxHash
+  // Find key bindings for this controller that have a proofTxHash in proofs
   const withProof = keyBindings
     .filter((att) => {
-      const boundAddress = att.data?.boundAddress ?? att.data?.wallet;
-      const matchesAttester = typeof boundAddress === "string"
-        ? boundAddress.toLowerCase() === attesterLower
-        : att.attester.toLowerCase() === attesterLower;
-      return matchesAttester && typeof att.data?.proofTxHash === "string";
+      if (!controllerMatchesKeyBinding(att, controllerDid, controllerMethod)) return false;
+      // Check if proofs contain a transaction hash
+      const proofs = att.data?.proofs;
+      if (Array.isArray(proofs)) {
+        return proofs.some((p) => typeof p === "string" && /^0x[0-9a-fA-F]{64}$/.test(p));
+      }
+      return typeof att.data?.proofTxHash === "string";
     })
     .sort((a, b) => Number(b.time - a.time)); // newest first
 

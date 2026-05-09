@@ -312,10 +312,15 @@ export type W3CKeyPurpose =
   | "assertionMethod"
   | "keyAgreement";
 
-export type GetAttesterAuthorizationParams = {
-  /** Attester wallet address */
-  attester: Hex;
-  /** Subject DID the attester claims to control */
+export type GetControllerAuthorizationParams = {
+  /**
+   * Controller identifier. Can be:
+   * - An EVM wallet address (Hex) for did:pkh controllers
+   * - A did:pkh DID string
+   * - A did:jwk DID string
+   */
+  controllerDid: string;
+  /** Subject DID the controller claims to control */
   subjectDid: Did;
   /** ethers v6 Provider for on-chain reads */
   provider: unknown;
@@ -348,8 +353,8 @@ export type ControllerWitnessEvidence = {
   method?: "dns" | "did-document" | "manual" | "other";
 };
 
-export type AttesterAuthorizationResult = {
-  /** Whether the attester has any authorization for this subject */
+export type ControllerAuthorizationResult = {
+  /** Whether the controller has any authorization for this subject */
   authorized: boolean;
   /**
    * Earliest timestamp of durable authorization evidence, usually the first
@@ -380,7 +385,7 @@ export type AttesterAuthorizationResult = {
   keyPurposeStatus: "matched" | "unknown" | "mismatch" | "not-required";
   /**
    * Whether the key binding includes a verified transfer proof.
-   * Only relevant for did:pkh subjects where the attester is authorized
+   * Only relevant for did:pkh subjects where the controller is authorized
    * via a key binding backed by a deterministic native transfer.
    */
   transferProofVerified?: boolean;

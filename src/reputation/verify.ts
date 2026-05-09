@@ -7,6 +7,16 @@ import {
 import { verifyDidDocumentControllerDid } from "./proof/did-json";
 import { verifyEip712Signature } from "./proof/eip712";
 import { parseDnsTxtRecord } from "./proof/dns-txt-record";
+import {
+  verifyX402JwsOffer,
+  verifyX402JwsReceipt,
+  type X402JwsArtifact,
+} from "./proof/x402-jws";
+import {
+  verifyX402Eip712Offer,
+  verifyX402Eip712Receipt,
+  type X402Eip712Artifact,
+} from "./proof/x402-eip712";
 import type {
   AttestationQueryResult,
   ProofPurpose,
@@ -211,6 +221,52 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         if (!proof.proofObject || typeof proof.proofObject !== "object") {
           return { valid: false, proofType: proof.proofType, reason: "Invalid x402 proof object" };
         }
+
+        // JWS cryptographic verification when format is "jws"
+        const proofObj = proof.proofObject as Record<string, unknown>;
+        if (proofObj.format === "jws" && typeof proofObj.signature === "string") {
+          const artifact: X402JwsArtifact = {
+            format: "jws",
+            signature: proofObj.signature,
+          };
+          const jwsResult =
+            proof.proofType === "x402-offer"
+              ? await verifyX402JwsOffer(artifact)
+              : await verifyX402JwsReceipt(artifact);
+
+          if (!jwsResult.valid) {
+            return {
+              valid: false,
+              proofType: proof.proofType,
+              reason: jwsResult.error?.message ?? "JWS verification failed",
+            };
+          }
+          return { valid: true, proofType: proof.proofType };
+        }
+
+        // EIP-712 cryptographic verification when format is "eip712"
+        if (proofObj.format === "eip712" && typeof proofObj.signature === "string" && proofObj.payload && typeof proofObj.payload === "object") {
+          const artifact: X402Eip712Artifact = {
+            format: "eip712",
+            payload: proofObj.payload as Record<string, unknown>,
+            signature: proofObj.signature,
+          };
+          const eip712Result =
+            proof.proofType === "x402-offer"
+              ? verifyX402Eip712Offer(artifact)
+              : verifyX402Eip712Receipt(artifact);
+
+          if (!eip712Result.valid) {
+            return {
+              valid: false,
+              proofType: proof.proofType,
+              reason: eip712Result.error?.message ?? "EIP-712 verification failed",
+            };
+          }
+          return { valid: true, proofType: proof.proofType };
+        }
+
+        // Non-JWS/non-EIP-712 x402 proofs: shape-only check (backward compatible)
         return { valid: true, proofType: proof.proofType };
       }
 

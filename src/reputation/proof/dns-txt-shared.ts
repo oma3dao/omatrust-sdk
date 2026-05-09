@@ -1,4 +1,4 @@
-import { normalizeDid } from "../../identity/did";
+import { isSameControllerId } from "../../identity/controller-id";
 import { OmaTrustError } from "../../shared/errors";
 import type { Did } from "../types";
 import { parseDnsTxtRecord } from "./dns-txt-record";
@@ -8,6 +8,14 @@ export interface VerifyDnsTxtControllerDidOptions {
   recordPrefix?: string;
 }
 
+/**
+ * Verify that a controller DID appears in DNS TXT records for a domain.
+ *
+ * Uses isSameControllerId for matching, which supports:
+ * - Exact normalized DID string match
+ * - EVM address match (chain-agnostic)
+ * - JWK material match (for did:jwk with different encodings)
+ */
 export async function verifyDnsTxtControllerDid(
   domain: string,
   expectedControllerDid: Did,
@@ -21,7 +29,6 @@ export async function verifyDnsTxtControllerDid(
     throw new OmaTrustError("NETWORK_ERROR", "No DNS TXT resolver was provided", { domain });
   }
 
-  const expected = normalizeDid(expectedControllerDid);
   const prefix = options.recordPrefix ?? "_controllers";
   const host = `${prefix}.${domain.toLowerCase().replace(/\.$/, "")}`;
 
@@ -35,10 +42,14 @@ export async function verifyDnsTxtControllerDid(
   for (const recordParts of records) {
     const record = recordParts.join("");
     const parsed = parseDnsTxtRecord(record);
-    if (parsed.version === "1" && parsed.controllers.some((c) => normalizeDid(c) === expected)) {
-      return { valid: true, record };
+    if (parsed.version !== "1") continue;
+
+    for (const recordController of parsed.controllers) {
+      if (isSameControllerId(recordController, expectedControllerDid)) {
+        return { valid: true, record };
+      }
     }
   }
 
-  return { valid: false, reason: "Controller DID not found in the proper DNS TXT record" };
+  return { valid: false, reason: "Controller DID not found in DNS TXT records" };
 }
