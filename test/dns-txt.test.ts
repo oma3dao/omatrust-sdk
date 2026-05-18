@@ -104,7 +104,7 @@ describe("proof/dns-txt", () => {
       );
 
       expect(result.valid).toBe(false);
-      expect(result.reason).toContain("No TXT record matched");
+      expect(result.reason).toContain("Controller DID not found in DNS TXT records");
     });
 
     it("returns invalid when no records returned", async () => {
@@ -116,7 +116,7 @@ describe("proof/dns-txt", () => {
       );
 
       expect(result.valid).toBe(false);
-      expect(result.reason).toContain("No TXT record matched");
+      expect(result.reason).toContain("Controller DID not found in DNS TXT records");
     });
 
     it("handles multi-part TXT records (joined)", async () => {

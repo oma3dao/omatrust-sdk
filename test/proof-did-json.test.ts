@@ -205,7 +205,7 @@ describe("proof/did-json", () => {
       await expect(fetchDidDocument("example.com")).rejects.toThrow(OmaTrustError);
       await expect(fetchDidDocument("example.com")).rejects.toMatchObject({
         code: "NETWORK_ERROR",
-        message: "DID document fetch failed"
+        message: "DID document fetch failed: 404"
       });
     });
   });

@@ -41,7 +41,7 @@ describe("reputation/verify", () => {
         const provider = { getTransaction: vi.fn() };
         const result = await verifyProof({ proof, provider });
         expect(result.valid).toBe(false);
-        expect(result.reason).toContain("expectedSubject and expectedController are required");
+        expect(result.reason).toContain("expectedSubjectDid and expectedControllerDid are required");
       });
 
       it("returns invalid when transaction not found", async () => {
@@ -53,8 +53,8 @@ describe("reputation/verify", () => {
         const result = await verifyProof({
           proof,
           provider,
-          expectedSubject: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
-          expectedController: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
+          expectedSubjectDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+          expectedControllerDid: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
         });
         expect(result.valid).toBe(false);
         expect(result.reason).toContain("Transaction not found");
@@ -75,8 +75,8 @@ describe("reputation/verify", () => {
         const result = await verifyProof({
           proof,
           provider,
-          expectedSubject: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
-          expectedController: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
+          expectedSubjectDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+          expectedControllerDid: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
         });
         expect(result.valid).toBe(false);
         expect(result.reason).toContain("sender mismatch");
@@ -97,8 +97,8 @@ describe("reputation/verify", () => {
         const result = await verifyProof({
           proof,
           provider,
-          expectedSubject: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
-          expectedController: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
+          expectedSubjectDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+          expectedControllerDid: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
         });
         expect(result.valid).toBe(false);
         expect(result.reason).toContain("recipient mismatch");
@@ -119,8 +119,8 @@ describe("reputation/verify", () => {
         const result = await verifyProof({
           proof,
           provider,
-          expectedSubject: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
-          expectedController: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
+          expectedSubjectDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+          expectedControllerDid: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
         });
         expect(result.valid).toBe(false);
         expect(result.reason).toContain("amount mismatch");
@@ -146,8 +146,8 @@ describe("reputation/verify", () => {
         const result = await verifyProof({
           proof,
           provider,
-          expectedSubject: subject,
-          expectedController: controller
+          expectedSubjectDid: subject,
+          expectedControllerDid: controller
         });
         expect(result.valid).toBe(true);
         expect(result.proofType).toBe("tx-encoded-value");
@@ -163,8 +163,8 @@ describe("reputation/verify", () => {
           verifyProof({
             proof,
             provider,
-            expectedSubject: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
-            expectedController: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
+            expectedSubjectDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111",
+            expectedControllerDid: "did:pkh:eip155:1:0x2222222222222222222222222222222222222222"
           })
         ).rejects.toThrow("Proof verification failed");
       });
@@ -189,8 +189,8 @@ describe("reputation/verify", () => {
         const result = await verifyProof({
           proof,
           provider,
-          expectedSubject: subject,
-          expectedController: controller
+          expectedSubjectDid: subject,
+          expectedControllerDid: controller
         });
         expect(result.valid).toBe(true);
       });
@@ -414,7 +414,7 @@ describe("reputation/verify", () => {
         };
         const result = await verifyProof({
           proof,
-          expectedController: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
+          expectedControllerDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
         });
 
         expect(result.valid).toBe(false);
@@ -437,7 +437,7 @@ describe("reputation/verify", () => {
         };
         const result = await verifyProof({
           proof,
-          expectedController: controllerDid
+          expectedControllerDid: controllerDid
         });
 
         expect(result.valid).toBe(true);
@@ -458,7 +458,7 @@ describe("reputation/verify", () => {
         };
         const result = await verifyProof({
           proof,
-          expectedController: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
+          expectedControllerDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
         });
 
         expect(result.valid).toBe(false);
@@ -476,7 +476,7 @@ describe("reputation/verify", () => {
         };
         const result = await verifyProof({
           proof,
-          expectedController: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
+          expectedControllerDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
         });
 
         expect(result.valid).toBe(true);
@@ -494,7 +494,7 @@ describe("reputation/verify", () => {
         };
         const result = await verifyProof({
           proof,
-          expectedController: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
+          expectedControllerDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
         });
 
         expect(result.valid).toBe(false);
@@ -510,7 +510,7 @@ describe("reputation/verify", () => {
         };
         const result = await verifyProof({
           proof,
-          expectedController: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
+          expectedControllerDid: "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
         });
 
         expect(result.valid).toBe(false);

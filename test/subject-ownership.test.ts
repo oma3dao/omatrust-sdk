@@ -6,7 +6,7 @@ import {
   verifyDidWebOwnership,
   verifySubjectOwnership,
   type EvmOwnershipProvider
-} from "../src/reputation/proof/subject-ownership";
+} from "../src/reputation/subject-ownership";
 
 function createProvider(overrides: Partial<EvmOwnershipProvider> = {}): EvmOwnershipProvider {
   return {
