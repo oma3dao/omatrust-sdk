@@ -1,20 +1,20 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { OmaTrustError } from "../src/shared/errors";
 import {
-  extractAddressesFromDidDocument,
+  extractEvmAddressesFromDidDocument,
   fetchDidDocument,
   verifyDidJsonControllerDid,
   verifyDidDocumentControllerDid
 } from "../src/reputation/proof/did-json";
 
 describe("proof/did-json", () => {
-  describe("extractAddressesFromDidDocument", () => {
+  describe("extractEvmAddressesFromDidDocument", () => {
     it("returns empty array when verificationMethod is missing", () => {
-      expect(extractAddressesFromDidDocument({})).toEqual([]);
+      expect(extractEvmAddressesFromDidDocument({})).toEqual([]);
     });
 
     it("returns empty array when verificationMethod is not an array", () => {
-      expect(extractAddressesFromDidDocument({ verificationMethod: "not-array" })).toEqual([]);
+      expect(extractEvmAddressesFromDidDocument({ verificationMethod: "not-array" })).toEqual([]);
     });
 
     it("extracts address from blockchainAccountId (raw address)", () => {
@@ -23,7 +23,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
       expect(addresses[0].toLowerCase()).toBe("0x1111111111111111111111111111111111111111");
     });
@@ -34,7 +34,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "eip155:1:0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
     });
 
@@ -44,7 +44,7 @@ describe("proof/did-json", () => {
           { publicKeyHex: "0x2222222222222222222222222222222222222222" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
       expect(addresses[0].toLowerCase()).toBe("0x2222222222222222222222222222222222222222");
     });
@@ -55,7 +55,7 @@ describe("proof/did-json", () => {
           { publicKeyHex: "3333333333333333333333333333333333333333" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
       expect(addresses[0].toLowerCase()).toBe("0x3333333333333333333333333333333333333333");
     });
@@ -67,7 +67,7 @@ describe("proof/did-json", () => {
           { publicKeyHex: "0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
     });
 
@@ -79,7 +79,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
     });
 
@@ -90,7 +90,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "0x2222222222222222222222222222222222222222" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(2);
     });
   });

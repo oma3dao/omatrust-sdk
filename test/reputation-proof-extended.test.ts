@@ -457,8 +457,9 @@ describe("proof construction – extended", () => {
     });
 
     it("parseDnsTxtRecord handles entries with = in value", () => {
-      const parsed = parseDnsTxtRecord("key=value=with=equals");
-      expect(parsed["key"]).toBe("value=with=equals");
+      const parsed = parseDnsTxtRecord("v=1;controller=did:web:a=b=c");
+      expect(parsed.version).toBe("1");
+      expect(parsed.controller).toBe("did:web:a=b=c");
     });
 
     it("buildDnsTxtRecord normalizes the controller DID", () => {
