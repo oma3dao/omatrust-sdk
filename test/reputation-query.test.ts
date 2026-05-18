@@ -227,7 +227,7 @@ describe("reputation/query – getAttestationsForDid", () => {
 
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     const results = await getAttestationsForDid({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress
     });
@@ -242,7 +242,7 @@ describe("reputation/query – getAttestationsForDid", () => {
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     await expect(
       getAttestationsForDid({
-        did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+        subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
         provider,
         easContractAddress
       })
@@ -274,7 +274,7 @@ describe("reputation/query – getAttestationsForDid", () => {
 
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     const results = await getAttestationsForDid({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress
     });
@@ -307,7 +307,7 @@ describe("reputation/query – getAttestationsForDid", () => {
 
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     const results = await getAttestationsForDid({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress,
       schemas: [schema1]
@@ -338,7 +338,7 @@ describe("reputation/query – getAttestationsForDid", () => {
 
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     const results = await getAttestationsForDid({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress
     });
@@ -358,7 +358,7 @@ describe("reputation/query – listAttestations", () => {
   it("returns empty when limit is 0", async () => {
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     const results = await listAttestations({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress,
       limit: 0
@@ -370,7 +370,7 @@ describe("reputation/query – listAttestations", () => {
     mockQueryFilter.mockClear();
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     const results = await listAttestations({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress,
       limit: -1
@@ -382,7 +382,7 @@ describe("reputation/query – listAttestations", () => {
   it("defaults limit to 20", async () => {
     const provider = { getBlockNumber: vi.fn().mockResolvedValue(1000) };
     await listAttestations({
-      did: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
+      subjectDid: "did:pkh:eip155:1:0x9999999999999999999999999999999999999999",
       provider,
       easContractAddress
     });
