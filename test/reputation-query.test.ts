@@ -81,6 +81,31 @@ describe("reputation/query – getAttestation", () => {
     expect(result.revocable).toBe(true);
   });
 
+  it("preserves raw attestation data when schema is not provided", async () => {
+    const raw = ("0x" + "ab".repeat(32)) as Hex;
+    mockGetAttestation.mockResolvedValue({
+      uid,
+      schema,
+      attester: "0x1111111111111111111111111111111111111111",
+      recipient: "0x2222222222222222222222222222222222222222",
+      revocable: true,
+      revocationTime: 0n,
+      expirationTime: 0n,
+      time: 1000n,
+      refUID: zeroUid,
+      data: raw,
+    });
+
+    const result = await getAttestation({
+      uid,
+      provider: {} as never,
+      easContractAddress,
+    });
+
+    expect(result.raw).toBe(raw);
+    expect(result.data).toEqual({});
+  });
+
   it("throws ATTESTATION_NOT_FOUND when attestation is null", async () => {
     mockGetAttestation.mockResolvedValue(null);
 

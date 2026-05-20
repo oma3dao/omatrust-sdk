@@ -402,6 +402,7 @@ describe("proof construction – extended", () => {
       const hash = hashSeed(seed, 1);
       expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
     });
+
   });
 
   describe("getSupportedChainIds", () => {
@@ -460,6 +461,13 @@ describe("proof construction – extended", () => {
       const parsed = parseDnsTxtRecord("v=1;controller=did:web:a=b=c");
       expect(parsed.version).toBe("1");
       expect(parsed.controller).toBe("did:web:a=b=c");
+    });
+
+    it("parseDnsTxtRecord ignores non-controller key=value pairs (only v and controller are structured)", () => {
+      const parsed = parseDnsTxtRecord("v=1;key=value=with=equals");
+      expect(parsed.version).toBe("1");
+      expect(parsed.controllers).toEqual([]);
+      expect(parsed.controller).toBeUndefined();
     });
 
     it("buildDnsTxtRecord normalizes the controller DID", () => {

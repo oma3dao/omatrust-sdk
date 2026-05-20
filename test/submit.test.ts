@@ -169,6 +169,27 @@ describe("reputation/submit", () => {
     expect(attestCall.data.recipient).not.toBe("0x0000000000000000000000000000000000000000");
   });
 
+  it("uses ZeroAddress when no recipient can be resolved from data", async () => {
+    mockWait.mockResolvedValue(VALID_UID);
+    mockAttest.mockResolvedValue({
+      wait: mockWait,
+      receipt: { hash: VALID_TX_HASH },
+    });
+
+    await submitAttestation({
+      signer: { signTransaction: vi.fn() } as unknown,
+      chainId: 1,
+      easContractAddress: VALID_EAS_ADDR,
+      schemaUid: VALID_SCHEMA_UID,
+      schema: "string note",
+      data: { note: "no subject or recipient" },
+    });
+
+    expect(mockAttest.mock.calls[0][0].data.recipient).toBe(
+      "0x0000000000000000000000000000000000000000"
+    );
+  });
+
   it("uses ZERO_UID for txHash when transaction has no receipt or hash", async () => {
     mockWait.mockResolvedValue(VALID_UID);
     mockAttest.mockResolvedValue({ wait: mockWait });

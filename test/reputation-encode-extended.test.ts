@@ -73,6 +73,11 @@ describe("reputation/encode", () => {
       expect(() => normalizeSchema("   ")).toThrow(OmaTrustError);
     });
 
+    it("throws when comma-separated string has no fields", () => {
+      expect(() => normalizeSchema(", , ,")).toThrow(OmaTrustError);
+      expect(() => normalizeSchema(", , ,")).toThrow("No schema fields found");
+    });
+
     it("throws for invalid schema field (missing name)", () => {
       expect(() => normalizeSchema("uint256")).toThrow(OmaTrustError);
     });

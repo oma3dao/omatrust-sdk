@@ -137,6 +137,18 @@ describe("widgets/bridge", () => {
     bridge.destroy();
   });
 
+  it("ignores messages with malformed origin URLs", async () => {
+    const signTypedData = vi.fn();
+    const bridge = await createSigningBridge({
+      iframeId: "widget-frame",
+      signTypedData,
+    });
+
+    await dispatchMessage(validSigningMessage(), { origin: "not-a-valid-url" });
+    expect(signTypedData).not.toHaveBeenCalled();
+    bridge.destroy();
+  });
+
   it("ignores messages from untrusted origins unless override matches", async () => {
     const signTypedData = vi.fn();
     const bridge = await createSigningBridge({
@@ -542,7 +554,7 @@ describe("widgets/bridge", () => {
     bridge.destroy();
   });
 
-  it("throws when trust policy fetch fails or allowlists are empty", async () => {
+  it("throws when trust anchors fetch fails or allowlists are empty", async () => {
     mockFetchTrustAnchors.mockRejectedValueOnce(new Error("policy unavailable"));
 
     await expect(

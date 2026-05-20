@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getChainAnchors,
+  getSchemaAnchor,
+  type TrustAnchors,
+} from "../src/shared/trust-anchors";
 
 const mockAnchors = {
   version: 1,
@@ -9,12 +14,12 @@ const mockAnchors = {
     "eip155:1": {
       name: "Mainnet",
       easContract: "0x1234567890abcdef1234567890abcdef12345678",
-      schemas: { "user-review": `0x${"a".repeat(64)}`, "app-rating": `0x${"b".repeat(64)}` },
+      schemas: { schemaA: `0x${"a".repeat(64)}`, schemaB: `0x${"b".repeat(64)}` },
     },
     "eip155:10": {
       name: "Optimism",
       easContract: "0x1234567890abcdef1234567890abcdef12345678",
-      schemas: { "app-rating": `0x${"b".repeat(64)}`, "safety-report": `0x${"c".repeat(64)}` },
+      schemas: { schemaB2: `0x${"b".repeat(64)}`, schemaC: `0x${"c".repeat(64)}` },
     },
   },
 };
@@ -52,7 +57,10 @@ describe("shared/trust-anchors", () => {
     vi.resetModules();
     const mod = await import("../src/shared/trust-anchors");
 
-    await expect(mod.fetchTrustAnchors()).rejects.toThrow("Failed to fetch trust anchors: 500 Server Error");
+    await expect(mod.fetchTrustAnchors()).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+      message: "Failed to fetch trust anchors: 500 Server Error",
+    });
   });
 
   it("throws on invalid anchors format", async () => {
@@ -94,10 +102,20 @@ describe("shared/trust-anchors", () => {
     await mod.fetchTrustAnchors();
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
-    // CACHE_TTL_MS is 5 minutes; move beyond it to force a re-fetch.
     vi.setSystemTime(new Date("2026-04-15T00:06:00Z"));
     await mod.fetchTrustAnchors();
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws NETWORK_ERROR when fetch fails", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline")) as unknown as typeof fetch;
+    vi.resetModules();
+    const mod = await import("../src/shared/trust-anchors");
+
+    await expect(mod.fetchTrustAnchors()).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+      message: "Failed to fetch trust anchors",
+    });
   });
 
   it("extractAllowlists returns deduplicated contracts and schemas", async () => {
@@ -112,5 +130,27 @@ describe("shared/trust-anchors", () => {
       `0x${"b".repeat(64)}`,
       `0x${"c".repeat(64)}`,
     ]);
+  });
+});
+
+describe("shared/trust-anchors – getChainAnchors / getSchemaAnchor", () => {
+  const anchors = mockAnchors as TrustAnchors;
+
+  it("getChainAnchors returns anchors for a known CAIP-2 key", () => {
+    const chain = getChainAnchors(anchors, "eip155:1");
+    expect(chain.easContract).toBe("0x1234567890abcdef1234567890abcdef12345678");
+    expect(chain.schemas.schemaA).toBe(`0x${"a".repeat(64)}`);
+  });
+
+  it("getChainAnchors throws UNSUPPORTED_CHAIN for unknown chain", () => {
+    expect(() => getChainAnchors(anchors, "eip155:99999")).toThrow(/not in the trust anchors/);
+  });
+
+  it("getSchemaAnchor returns a schema UID by name", () => {
+    expect(getSchemaAnchor(anchors, "eip155:1", "schemaA")).toBe(`0x${"a".repeat(64)}`);
+  });
+
+  it("getSchemaAnchor throws when schema name is missing", () => {
+    expect(() => getSchemaAnchor(anchors, "eip155:1", "no-such-schema")).toThrow(/not found/);
   });
 });

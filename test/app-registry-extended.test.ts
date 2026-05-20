@@ -77,6 +77,14 @@ describe("app-registry – extended", () => {
     it("getInterfaceTypes returns empty for bitmap 0", () => {
       expect(getInterfaceTypes(0)).toEqual([]);
     });
+
+    it("getInterfaceTypes includes api for bitmap 2", () => {
+      expect(getInterfaceTypes(2)).toEqual(["api"]);
+    });
+
+    it("getInterfaceTypes returns all three flags for bitmap 7", () => {
+      expect(getInterfaceTypes(7)).toEqual(["human", "api", "contract"]);
+    });
   });
 
   describe("status – extended", () => {
