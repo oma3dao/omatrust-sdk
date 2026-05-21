@@ -7,6 +7,16 @@ import {
 import { verifyDidDocumentControllerDid } from "./proof/did-json";
 import { verifyEip712Signature } from "./proof/eip712";
 import { parseDnsTxtRecord } from "./proof/dns-txt-record";
+import {
+  verifyX402JwsOffer,
+  verifyX402JwsReceipt,
+  type X402JwsArtifact,
+} from "./proof/x402-jws";
+import {
+  verifyX402Eip712Offer,
+  verifyX402Eip712Receipt,
+  type X402Eip712Artifact,
+} from "./proof/x402-eip712";
 import type {
   AttestationQueryResult,
   ProofPurpose,
@@ -84,7 +94,7 @@ function decodeJwtPayload(compactJws: string): Record<string, unknown> {
 }
 
 export async function verifyProof(params: VerifyProofParams): Promise<VerifyProofResult> {
-  const { proof, provider, expectedSubject, expectedController } = params;
+  const { proof, provider, expectedSubjectDid, expectedControllerDid } = params;
 
   try {
     switch (proof.proofType) {
@@ -92,11 +102,11 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         if (!provider) {
           return { valid: false, proofType: proof.proofType, reason: "Provider is required" };
         }
-        if (!expectedSubject || !expectedController) {
+        if (!expectedSubjectDid || !expectedControllerDid) {
           return {
             valid: false,
             proofType: proof.proofType,
-            reason: "expectedSubject and expectedController are required"
+            reason: "expectedSubjectDid and expectedControllerDid are required"
           };
         }
 
@@ -110,14 +120,14 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         }
 
         const expectedAmount = calculateTransferAmount(
-          expectedSubject,
-          expectedController,
+          expectedSubjectDid,
+          expectedControllerDid,
           chainId,
           getProofPurpose(proof)
         );
 
-        const subjectAddress = getAddress(extractAddressFromDid(expectedSubject));
-        const controllerAddress = getAddress(extractAddressFromDid(expectedController));
+        const subjectAddress = getAddress(extractAddressFromDid(expectedSubjectDid));
+        const controllerAddress = getAddress(extractAddressFromDid(expectedControllerDid));
 
         if (tx.from && getAddress(tx.from) !== subjectAddress) {
           return { valid: false, proofType: proof.proofType, reason: "Transaction sender mismatch" };
@@ -211,6 +221,52 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         if (!proof.proofObject || typeof proof.proofObject !== "object") {
           return { valid: false, proofType: proof.proofType, reason: "Invalid x402 proof object" };
         }
+
+        // JWS cryptographic verification when format is "jws"
+        const proofObj = proof.proofObject as Record<string, unknown>;
+        if (proofObj.format === "jws" && typeof proofObj.signature === "string") {
+          const artifact: X402JwsArtifact = {
+            format: "jws",
+            signature: proofObj.signature,
+          };
+          const jwsResult =
+            proof.proofType === "x402-offer"
+              ? await verifyX402JwsOffer(artifact)
+              : await verifyX402JwsReceipt(artifact);
+
+          if (!jwsResult.valid) {
+            return {
+              valid: false,
+              proofType: proof.proofType,
+              reason: jwsResult.error?.message ?? "JWS verification failed",
+            };
+          }
+          return { valid: true, proofType: proof.proofType };
+        }
+
+        // EIP-712 cryptographic verification when format is "eip712"
+        if (proofObj.format === "eip712" && typeof proofObj.signature === "string" && proofObj.payload && typeof proofObj.payload === "object") {
+          const artifact: X402Eip712Artifact = {
+            format: "eip712",
+            payload: proofObj.payload as Record<string, unknown>,
+            signature: proofObj.signature,
+          };
+          const eip712Result =
+            proof.proofType === "x402-offer"
+              ? verifyX402Eip712Offer(artifact)
+              : verifyX402Eip712Receipt(artifact);
+
+          if (!eip712Result.valid) {
+            return {
+              valid: false,
+              proofType: proof.proofType,
+              reason: eip712Result.error?.message ?? "EIP-712 verification failed",
+            };
+          }
+          return { valid: true, proofType: proof.proofType };
+        }
+
+        // Non-JWS/non-EIP-712 x402 proofs: shape-only check (backward compatible)
         return { valid: true, proofType: proof.proofType };
       }
 
@@ -225,9 +281,9 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
           return { valid: false, proofType: proof.proofType, reason: `Evidence fetch failed (${response.status})` };
         }
 
-        if (object.url.endsWith("/.well-known/did.json") && expectedController) {
+        if (object.url.endsWith("/.well-known/did.json") && expectedControllerDid) {
           const didDoc = (await response.json()) as Record<string, unknown>;
-          const didCheck = verifyDidDocumentControllerDid(didDoc, expectedController);
+          const didCheck = verifyDidDocumentControllerDid(didDoc, expectedControllerDid);
           return {
             valid: didCheck.valid,
             proofType: proof.proofType,
@@ -236,10 +292,10 @@ export async function verifyProof(params: VerifyProofParams): Promise<VerifyProo
         }
 
         const body = await response.text();
-        if (expectedController && !body.includes(expectedController)) {
+        if (expectedControllerDid && !body.includes(expectedControllerDid)) {
           try {
             const parsed = parseDnsTxtRecord(body);
-            if (parsed.controller !== expectedController) {
+            if (!parsed.controllers.includes(expectedControllerDid)) {
               return {
                 valid: false,
                 proofType: proof.proofType,
@@ -306,8 +362,8 @@ export async function verifyAttestation(
     const result = await verifyProof({
       proof,
       provider: params.provider,
-      expectedSubject: params.context?.subject as string | undefined,
-      expectedController: params.context?.controller as string | undefined
+      expectedSubjectDid: params.context?.subjectDid as string | undefined,
+      expectedControllerDid: params.context?.controllerDid as string | undefined
     });
 
     checks[proof.proofType] = result.valid;

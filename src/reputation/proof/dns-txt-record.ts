@@ -2,9 +2,21 @@ import { normalizeDid } from "../../identity/did";
 import { OmaTrustError } from "../../shared/errors";
 import type { Did } from "../types";
 
-export function parseDnsTxtRecord(
-  record: string
-): { version?: string; controller?: Did; [key: string]: string | undefined } {
+export interface DnsTxtRecordResult {
+  version?: string;
+  /**
+   * @deprecated Use `controllers` instead. This field only returns the first
+   * controller value and will be removed in a future release.
+   */
+  controller?: Did;
+  /**
+   * All controller DIDs found in the record.
+   * A DNS TXT record may contain multiple controller= entries.
+   */
+  controllers: Did[];
+}
+
+export function parseDnsTxtRecord(record: string): DnsTxtRecordResult {
   if (!record || typeof record !== "string") {
     throw new OmaTrustError("INVALID_INPUT", "record must be a non-empty string", { record });
   }
@@ -15,22 +27,26 @@ export function parseDnsTxtRecord(
     .filter(Boolean);
 
   const parsed: Record<string, string | undefined> = {};
+  const controllers: Did[] = [];
+
   for (const entry of entries) {
-    const [key, ...valueParts] = entry.split("=");
-    if (!key) {
-      continue;
+    const eqIndex = entry.indexOf("=");
+    if (eqIndex === -1) continue;
+    const key = entry.slice(0, eqIndex).trim();
+    const value = entry.slice(eqIndex + 1).trim();
+    if (!key || !value) continue;
+
+    if (key === "controller") {
+      controllers.push(value);
+    } else {
+      parsed[key] = value;
     }
-    const value = valueParts.join("=");
-    if (!value) {
-      continue;
-    }
-    parsed[key.trim()] = value.trim();
   }
 
   return {
     version: parsed.v,
-    controller: parsed.controller,
-    ...parsed
+    controller: controllers[0],
+    controllers,
   };
 }
 

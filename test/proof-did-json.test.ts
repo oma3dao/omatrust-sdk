@@ -1,20 +1,22 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { jwkToDidJwk } from "../src/identity/jwk";
 import { OmaTrustError } from "../src/shared/errors";
 import {
-  extractAddressesFromDidDocument,
+  extractEvmAddressesFromDidDocument,
+  extractJwksFromDidDocument,
   fetchDidDocument,
   verifyDidJsonControllerDid,
-  verifyDidDocumentControllerDid
+  verifyDidDocumentControllerDid,
 } from "../src/reputation/proof/did-json";
 
 describe("proof/did-json", () => {
-  describe("extractAddressesFromDidDocument", () => {
+  describe("extractEvmAddressesFromDidDocument", () => {
     it("returns empty array when verificationMethod is missing", () => {
-      expect(extractAddressesFromDidDocument({})).toEqual([]);
+      expect(extractEvmAddressesFromDidDocument({})).toEqual([]);
     });
 
     it("returns empty array when verificationMethod is not an array", () => {
-      expect(extractAddressesFromDidDocument({ verificationMethod: "not-array" })).toEqual([]);
+      expect(extractEvmAddressesFromDidDocument({ verificationMethod: "not-array" })).toEqual([]);
     });
 
     it("extracts address from blockchainAccountId (raw address)", () => {
@@ -23,7 +25,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
       expect(addresses[0].toLowerCase()).toBe("0x1111111111111111111111111111111111111111");
     });
@@ -34,7 +36,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "eip155:1:0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
     });
 
@@ -44,7 +46,7 @@ describe("proof/did-json", () => {
           { publicKeyHex: "0x2222222222222222222222222222222222222222" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
       expect(addresses[0].toLowerCase()).toBe("0x2222222222222222222222222222222222222222");
     });
@@ -55,7 +57,7 @@ describe("proof/did-json", () => {
           { publicKeyHex: "3333333333333333333333333333333333333333" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
       expect(addresses[0].toLowerCase()).toBe("0x3333333333333333333333333333333333333333");
     });
@@ -67,7 +69,7 @@ describe("proof/did-json", () => {
           { publicKeyHex: "0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
     });
 
@@ -79,7 +81,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "0x1111111111111111111111111111111111111111" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(1);
     });
 
@@ -90,7 +92,7 @@ describe("proof/did-json", () => {
           { blockchainAccountId: "0x2222222222222222222222222222222222222222" }
         ]
       };
-      const addresses = extractAddressesFromDidDocument(doc);
+      const addresses = extractEvmAddressesFromDidDocument(doc);
       expect(addresses).toHaveLength(2);
     });
   });
@@ -120,7 +122,7 @@ describe("proof/did-json", () => {
         "did:pkh:eip155:1:0x1111111111111111111111111111111111111111"
       );
       expect(result.valid).toBe(false);
-      expect(result.reason).toContain("No matching address");
+      expect(result.reason).toContain("No matching address found");
     });
 
     it("returns invalid when expectedControllerDid cannot resolve to address", () => {
@@ -153,6 +155,21 @@ describe("proof/did-json", () => {
         "did:pkh:eip155:1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       );
       expect(result.valid).toBe(true);
+    });
+  });
+
+  describe("extractJwksFromDidDocument", () => {
+    it("returns empty array when verificationMethod is missing", () => {
+      expect(extractJwksFromDidDocument({})).toEqual([]);
+    });
+
+    it("collects publicKeyJwk objects from verification methods", () => {
+      const jwk = { kty: "EC", crv: "P-256", x: "a", y: "b" };
+      expect(
+        extractJwksFromDidDocument({
+          verificationMethod: [{ publicKeyJwk: jwk }, { publicKeyJwk: "not-an-object" }],
+        })
+      ).toEqual([jwk]);
     });
   });
 
@@ -205,7 +222,7 @@ describe("proof/did-json", () => {
       await expect(fetchDidDocument("example.com")).rejects.toThrow(OmaTrustError);
       await expect(fetchDidDocument("example.com")).rejects.toMatchObject({
         code: "NETWORK_ERROR",
-        message: "DID document fetch failed"
+        message: "DID document fetch failed: 404"
       });
     });
   });
@@ -241,7 +258,7 @@ describe("proof/did-json", () => {
       );
 
       expect(result.valid).toBe(false);
-      expect(result.reason).toContain("No matching address");
+      expect(result.reason).toContain("No matching address found");
     });
 
     it("throws INVALID_INPUT for an empty domain", async () => {
@@ -253,6 +270,76 @@ describe("proof/did-json", () => {
       ).rejects.toMatchObject({
         code: "INVALID_INPUT"
       });
+    });
+  });
+
+  describe("verifyDidDocumentControllerDid — did:jwk", () => {
+    const EC_P256_JWK = {
+      kty: "EC",
+      crv: "P-256",
+      x: "f83OJ3D7xI1Yp1V2iFIYA7n5OYXc4K1Uo7jY14FKMC4",
+      y: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+    };
+
+    it("returns valid when document publicKeyJwk matches did:jwk controller", () => {
+      const controllerDid = jwkToDidJwk(EC_P256_JWK);
+      const doc = {
+        verificationMethod: [
+          {
+            id: "did:web:api.example.com#k1",
+            type: "JsonWebKey2020",
+            publicKeyJwk: EC_P256_JWK,
+          },
+        ],
+      };
+      const result = verifyDidDocumentControllerDid(doc, controllerDid);
+      expect(result.valid).toBe(true);
+    });
+
+    it("returns invalid when did:jwk controller cannot be decoded", () => {
+      const result = verifyDidDocumentControllerDid(
+        { verificationMethod: [] },
+        "did:jwk:!!!not-valid-base64url!!!"
+      );
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain("Failed to decode did:jwk");
+    });
+
+    it("returns invalid when publicKeyJwk comparison throws", () => {
+      const controllerDid = jwkToDidJwk(EC_P256_JWK);
+      const doc = {
+        verificationMethod: [
+          {
+            id: "did:web:api.example.com#k1",
+            type: "JsonWebKey2020",
+            publicKeyJwk: { kty: "EC", crv: "P-256", x: "!!!", y: "!!!" },
+          },
+        ],
+      };
+      const result = verifyDidDocumentControllerDid(doc, controllerDid);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain("No matching publicKeyJwk");
+    });
+
+    it("returns invalid when no publicKeyJwk matches did:jwk", () => {
+      const controllerDid = jwkToDidJwk(EC_P256_JWK);
+      const otherKey = {
+        kty: "OKP",
+        crv: "Ed25519",
+        x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+      };
+      const doc = {
+        verificationMethod: [
+          {
+            id: "did:web:api.example.com#k1",
+            type: "JsonWebKey2020",
+            publicKeyJwk: otherKey,
+          },
+        ],
+      };
+      const result = verifyDidDocumentControllerDid(doc, controllerDid);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain("No matching publicKeyJwk");
     });
   });
 });

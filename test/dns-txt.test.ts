@@ -12,6 +12,7 @@ import {
   buildDnsTxtRecord,
   verifyDnsTxtControllerDid
 } from "../src/reputation/proof/dns-txt";
+import { verifyDnsTxtControllerDid as verifyDnsTxtShared } from "../src/reputation/proof/dns-txt-shared";
 
 describe("proof/dns-txt", () => {
   describe("parseDnsTxtRecord", () => {
@@ -41,11 +42,23 @@ describe("proof/dns-txt", () => {
       expect(result.version).toBe("1");
       expect(result.controller).toBe("did:web:a.com");
     });
+
+    it("skips malformed entries without equals sign", () => {
+      const result = parseDnsTxtRecord("v=1 malformed controller=did:web:a.com");
+      expect(result.version).toBe("1");
+      expect(result.controller).toBe("did:web:a.com");
+    });
   });
 
   describe("verifyDnsTxtControllerDid", () => {
     beforeEach(() => {
       mockResolveTxt.mockReset();
+    });
+
+    it("throws when no DNS resolver is provided", async () => {
+      await expect(
+        verifyDnsTxtShared("example.com", "did:pkh:eip155:1:0x1111111111111111111111111111111111111111", {})
+      ).rejects.toMatchObject({ code: "NETWORK_ERROR" });
     });
 
     it("throws for empty domain", async () => {
@@ -104,7 +117,7 @@ describe("proof/dns-txt", () => {
       );
 
       expect(result.valid).toBe(false);
-      expect(result.reason).toContain("No TXT record matched");
+      expect(result.reason).toContain("Controller DID not found in DNS TXT records");
     });
 
     it("returns invalid when no records returned", async () => {
@@ -116,7 +129,7 @@ describe("proof/dns-txt", () => {
       );
 
       expect(result.valid).toBe(false);
-      expect(result.reason).toContain("No TXT record matched");
+      expect(result.reason).toContain("Controller DID not found in DNS TXT records");
     });
 
     it("handles multi-part TXT records (joined)", async () => {

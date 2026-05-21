@@ -2,6 +2,7 @@ import { OmaTrustError } from "../../shared/errors";
 import type { Did } from "../types";
 
 export { parseDnsTxtRecord, buildDnsTxtRecord } from "./dns-txt-record";
+export type { DnsTxtRecordResult } from "./dns-txt-record";
 
 export interface VerifyDnsTxtControllerDidOptions {
   resolveTxt?: (host: string) => Promise<string[][]>;

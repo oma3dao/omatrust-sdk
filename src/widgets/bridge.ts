@@ -3,7 +3,7 @@
  *
  * Handles the postMessage protocol between a host page and an embedded
  * OMATrust widget. Validates incoming EAS signing requests against the
- * OMA3 trust policy before forwarding to the host's wallet.
+ * OMA3 trust anchors before forwarding to the host's wallet.
  *
  * The bridge resolves the iframe element lazily by ID when messages arrive,
  * avoiding React ref timing issues with conditionally rendered iframes.
@@ -28,7 +28,7 @@ import {
   OMATRUST_SIGNATURE,
   OMATRUST_SIGNATURE_ERROR,
 } from "./protocol";
-import { fetchTrustPolicy, extractAllowlists, TRUST_POLICY_URL } from "./trust-policy";
+import { fetchTrustAnchors, extractAllowlists, TRUST_ANCHORS_URL } from "../shared/trust-anchors";
 
 export type SigningBridgeOptions = {
   /**
@@ -50,8 +50,8 @@ export type SigningBridgeOptions = {
 
   /**
    * Override the allowed widget origin for local development.
-   * In production, the origin is derived from the trust policy domain
-   * (*.omatrust.org) plus any widgetOrigins in the policy.
+   * In production, the origin is derived from the trust anchors domain
+   * (*.omatrust.org) plus any widgetOrigins in the trust anchors.
    * Only set this for local dev (e.g., "http://localhost:3000").
    */
   devOriginOverride?: string;
@@ -68,7 +68,7 @@ export type SigningBridge = {
 
 function getTrustedBaseDomain(): string {
   try {
-    const hostname = new URL(TRUST_POLICY_URL).hostname;
+    const hostname = new URL(TRUST_ANCHORS_URL).hostname;
     const parts = hostname.split(".");
     return parts.length >= 2 ? parts.slice(-2).join(".") : hostname;
   } catch {
@@ -139,7 +139,7 @@ function validateEasSigningRequest(
 
   const contractLower = (d.verifyingContract as string).toLowerCase();
   if (!allowedContracts.some(c => c.toLowerCase() === contractLower)) {
-    return { valid: false, reason: `Contract ${d.verifyingContract} is not in the OMA3 trust policy` };
+    return { valid: false, reason: `Contract ${d.verifyingContract} is not in the OMA3 trust anchors` };
   }
 
   if (!types || typeof types !== "object") {
@@ -157,7 +157,7 @@ function validateEasSigningRequest(
 
   const schemaLower = m.schema.toLowerCase();
   if (!allowedSchemas.some(s => s.toLowerCase() === schemaLower)) {
-    return { valid: false, reason: `Schema ${m.schema} is not in the OMA3 trust policy` };
+    return { valid: false, reason: `Schema ${m.schema} is not in the OMA3 trust anchors` };
   }
 
   if (typeof m.attester !== "string" || !HEX_ADDRESS_RE.test(m.attester)) {
@@ -187,21 +187,21 @@ function validateEasSigningRequest(
  * creation time. This avoids React ref timing issues — the bridge can be
  * created before the iframe is in the DOM.
  *
- * Fetches the OMA3 trust policy on creation. Fails closed if unavailable.
+ * Fetches the OMA3 trust anchors on creation. Fails closed if unavailable.
  */
 export async function createSigningBridge(options: SigningBridgeOptions): Promise<SigningBridge> {
   const { iframeId, signTypedData, devOriginOverride } = options;
 
-  // Fetch the trust policy — fail closed if unavailable
-  const policy = await fetchTrustPolicy();
-  const { allowedContracts, allowedSchemas } = extractAllowlists(policy);
+  // Fetch the trust anchors: fail closed if unavailable.
+  const anchors = await fetchTrustAnchors();
+  const { allowedContracts, allowedSchemas } = extractAllowlists(anchors);
 
   if (allowedContracts.length === 0 || allowedSchemas.length === 0) {
-    throw new Error("Trust policy contains no allowed contracts or schemas");
+    throw new Error("Trust anchors contain no allowed contracts or schemas");
   }
 
   const baseDomain = getTrustedBaseDomain();
-  const policyOrigins = policy.widgetOrigins ?? [];
+  const anchorOrigins = anchors.widgetOrigins ?? [];
 
   async function handleMessage(event: MessageEvent) {
     const data = event.data;
@@ -209,7 +209,7 @@ export async function createSigningBridge(options: SigningBridgeOptions): Promis
     if (!String(data.type).startsWith("omatrust:")) return;
 
     // Origin check
-    if (!isOriginTrusted(event.origin, baseDomain, policyOrigins, devOriginOverride)) {
+    if (!isOriginTrusted(event.origin, baseDomain, anchorOrigins, devOriginOverride)) {
       return;
     }
 

@@ -4,7 +4,7 @@ Status: Implemented
 
 ## Goal
 
-Provide a secure, validated postMessage bridge between a host page and an embedded OMATrust widget iframe. The bridge handles the handshake, validates signing requests against the OMA3 trust policy, and forwards valid requests to the host's wallet.
+Provide a secure, validated postMessage bridge between a host page and an embedded OMATrust widget iframe. The bridge handles the handshake, validates signing requests against the OMA3 trust anchors, and forwards valid requests to the host's wallet.
 
 ## postMessage Protocol
 
@@ -40,11 +40,11 @@ Widget → Host:   { type: "omatrust:close" }
 
 Widget sends `omatrust:close` when the user clicks Cancel or Done. Host should close the modal/iframe.
 
-## Trust Policy
+## Trust Anchors
 
-The bridge fetches the OMA3 trust policy from `https://api.omatrust.org/v1/trust-policy` on creation.
+The bridge fetches the OMA3 trust anchors from `https://api.omatrust.org/v1/trust-anchors` on creation. `fetchTrustPolicy()` and `TRUST_POLICY_URL` remain compatibility aliases for the newer trust-anchors naming.
 
-### Policy shape
+### Trust anchors shape
 
 ```json
 {
@@ -52,18 +52,24 @@ The bridge fetches the OMA3 trust policy from `https://api.omatrust.org/v1/trust
   "updatedAt": "2026-04-13T00:00:00Z",
   "widgetOrigins": [],
   "chains": {
-    "66238": {
+    "eip155:66238": {
       "name": "OMAchain Testnet",
       "easContract": "0x8835...",
-      "schemas": ["0x7ab3...", "0x26e2...", "0x807b...", "0xc814..."]
+      "schemas": {
+        "user-review": "0x7ab3...",
+        "linked-identifier": "0x26e2...",
+        "key-binding": "0x807b...",
+        "controller-witness": "0xc814..."
+      }
     }
-  }
+  },
+  "registries": []
 }
 ```
 
 ### Fail-closed behavior
 
-If the trust policy cannot be fetched, `createSigningBridge` throws and the bridge does not start. No signing requests are processed without a valid policy.
+If the trust anchors cannot be fetched, `createSigningBridge` throws and the bridge does not start. No signing requests are processed without valid trust anchors.
 
 ## Validation Rules
 
@@ -72,8 +78,8 @@ Every `omatrust:signTypedData` request is validated before the wallet is called.
 ### Origin check
 
 Message origin must be:
-- A subdomain of the trust policy domain (`*.omatrust.org`), OR
-- Listed in the policy's `widgetOrigins` array, OR
+- A subdomain of the trust anchors domain (`*.omatrust.org`), OR
+- Listed in the trust anchors `widgetOrigins` array, OR
 - The `devOriginOverride` (for local development only)
 
 ### Source check
@@ -87,8 +93,8 @@ Message origin must be:
 | `domain.name`              | Must be `"EAS"`                                    |
 | `domain.version`           | Must be `"1.4.0"`                                  |
 | `domain.chainId`           | Must be a positive integer                         |
-| `domain.verifyingContract` | Must be a valid hex address AND in the trust policy |
-| `message.schema`           | Must be a valid bytes32 AND in the trust policy     |
+| `domain.verifyingContract` | Must be a valid hex address AND in the trust anchors |
+| `message.schema`           | Must be a valid bytes32 AND in the trust anchors     |
 | `message.attester`         | Must be a valid hex address                        |
 | `message.deadline`         | Must be in the future                              |
 | `id`                       | Must be a non-empty string                         |
@@ -111,24 +117,24 @@ Returns `SigningBridge` with a `destroy()` method to remove listeners.
 
 ## Acceptance Criteria
 
-- [ ] Bridge fetches trust policy on creation
+- [ ] Bridge fetches trust anchors on creation
 - [ ] Bridge rejects requests from untrusted origins
 - [ ] Bridge rejects requests where `event.source !== iframe.contentWindow`
 - [ ] Bridge rejects requests with invalid EAS domain fields
-- [ ] Bridge rejects requests with contracts not in the trust policy
-- [ ] Bridge rejects requests with schemas not in the trust policy
+- [ ] Bridge rejects requests with contracts not in the trust anchors
+- [ ] Bridge rejects requests with schemas not in the trust anchors
 - [ ] Bridge rejects requests with expired deadlines
 - [ ] Bridge calls `signTypedData` callback only after all checks pass
 - [ ] Bridge returns signature to the widget via `omatrust:signature`
 - [ ] Bridge returns errors via `omatrust:signatureError`
 - [ ] Bridge responds to `omatrust:ready` with `omatrust:hostReady`
 - [ ] `destroy()` removes all event listeners
-- [ ] Bridge throws if trust policy fetch fails (fail closed)
+- [ ] Bridge throws if trust anchors fetch fails (fail closed)
 
 ## Edge Cases
 
 - Widget sends `omatrust:ready` before bridge is created → bridge responds on next retry
 - Iframe remounts (React key change) → iframe resolved by ID at message time, always current
 - Multiple concurrent signing requests → each has a unique `id`, responses are correlated
-- Trust policy cache expires → next `createSigningBridge` call fetches fresh
+- Trust anchors cache expires → next `createSigningBridge` call fetches fresh
 - `devOriginOverride` set in production → only affects origin check, all other validation still applies

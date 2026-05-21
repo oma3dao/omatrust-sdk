@@ -9,14 +9,14 @@ import {
 } from "../src/widgets/protocol";
 import { createSigningBridge } from "../src/widgets/bridge";
 
-const { mockFetchTrustPolicy, mockExtractAllowlists } = vi.hoisted(() => ({
-  mockFetchTrustPolicy: vi.fn(),
+const { mockFetchTrustAnchors, mockExtractAllowlists } = vi.hoisted(() => ({
+  mockFetchTrustAnchors: vi.fn(),
   mockExtractAllowlists: vi.fn(),
 }));
 
-vi.mock("../src/widgets/trust-policy", () => ({
-  TRUST_POLICY_URL: "https://api.omatrust.org/v1/trust-policy",
-  fetchTrustPolicy: mockFetchTrustPolicy,
+vi.mock("../src/shared/trust-anchors", () => ({
+  TRUST_ANCHORS_URL: "https://api.omatrust.org/v1/trust-anchors",
+  fetchTrustAnchors: mockFetchTrustAnchors,
   extractAllowlists: mockExtractAllowlists,
 }));
 
@@ -52,7 +52,7 @@ describe("widgets/bridge", () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
 
-    mockFetchTrustPolicy.mockResolvedValue({
+    mockFetchTrustAnchors.mockResolvedValue({
       version: 1,
       updatedAt: "2026-04-13T00:00:00Z",
       widgetOrigins: [],
@@ -134,6 +134,18 @@ describe("widgets/bridge", () => {
       { type: OMATRUST_SIGNATURE_ERROR, id: "req-1", error: "wallet failed" },
       "https://widget.omatrust.org"
     );
+    bridge.destroy();
+  });
+
+  it("ignores messages with malformed origin URLs", async () => {
+    const signTypedData = vi.fn();
+    const bridge = await createSigningBridge({
+      iframeId: "widget-frame",
+      signTypedData,
+    });
+
+    await dispatchMessage(validSigningMessage(), { origin: "not-a-valid-url" });
+    expect(signTypedData).not.toHaveBeenCalled();
     bridge.destroy();
   });
 
@@ -470,7 +482,7 @@ describe("widgets/bridge", () => {
     expect(source.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
         type: OMATRUST_SIGNATURE_ERROR,
-        error: expect.stringContaining("not in the OMA3 trust policy"),
+        error: expect.stringContaining("not in the OMA3 trust anchors"),
       }),
       "https://widget.omatrust.org"
     );
@@ -542,8 +554,8 @@ describe("widgets/bridge", () => {
     bridge.destroy();
   });
 
-  it("throws when trust policy fetch fails or allowlists are empty", async () => {
-    mockFetchTrustPolicy.mockRejectedValueOnce(new Error("policy unavailable"));
+  it("throws when trust anchors fetch fails or allowlists are empty", async () => {
+    mockFetchTrustAnchors.mockRejectedValueOnce(new Error("policy unavailable"));
 
     await expect(
       createSigningBridge({
@@ -552,7 +564,7 @@ describe("widgets/bridge", () => {
       })
     ).rejects.toThrow("policy unavailable");
 
-    mockFetchTrustPolicy.mockResolvedValueOnce({
+    mockFetchTrustAnchors.mockResolvedValueOnce({
       version: 1,
       updatedAt: "2026-04-13T00:00:00Z",
       widgetOrigins: [],
@@ -568,7 +580,7 @@ describe("widgets/bridge", () => {
         iframeId: "widget-frame",
         signTypedData: vi.fn(),
       })
-    ).rejects.toThrow("Trust policy contains no allowed contracts or schemas");
+    ).rejects.toThrow("Trust anchors contain no allowed contracts or schemas");
   });
 
   it("destroy removes the message listener", async () => {

@@ -511,6 +511,14 @@ describe("identity/data – extended", () => {
     });
   });
 
+  describe("canonicalizeForHash", () => {
+    it("returns JCS JSON and keccak256 hash", () => {
+      const { jcsJson, hash } = canonicalizeForHash({ b: 1, a: 2 });
+      expect(jcsJson).toBe('{"a":2,"b":1}');
+      expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
+    });
+  });
+
   describe("hashCanonicalizedJson", () => {
     it("produces keccak256 hash", () => {
       const hash = hashCanonicalizedJson({ a: 1 }, "keccak256");

@@ -194,10 +194,25 @@ export type SubmitDelegatedAttestationParams = {
   attester?: Hex;
 };
 
+export type RelayMetadata = {
+  blockNumber?: number;
+  chain?: string;
+  success?: boolean;
+  [key: string]: unknown;
+};
+
+export type RelayErrorDetails = {
+  httpStatus: number;
+  code?: string;
+  error?: string;
+  payload?: Record<string, unknown>;
+};
+
 export type SubmitDelegatedAttestationResult = {
   uid: Hex;
   txHash?: Hex;
   status: "submitted" | "confirmed";
+  relay?: RelayMetadata;
 };
 
 export type GetAttestationParams = {
@@ -208,7 +223,7 @@ export type GetAttestationParams = {
 };
 
 export type ListAttestationsParams = {
-  did: Did;
+  subjectDid: Did;
   provider: unknown;
   easContractAddress: Hex;
   schemas?: Hex[];
@@ -260,12 +275,118 @@ export type CallControllerWitnessResult = {
 export type VerifyProofParams = {
   proof: ProofWrapper;
   provider?: unknown;
-  expectedSubject?: Did;
-  expectedController?: Did;
+  expectedSubjectDid?: Did;
+  expectedControllerDid?: Did;
 };
 
 export type VerifyProofResult = {
   valid: boolean;
   proofType: ProofType;
   reason?: string;
+};
+
+export type RequestControllerWitnessParams = {
+  /** Subject DID (e.g., did:web:example.com) */
+  subjectDid: Did;
+  /** Controller DID (e.g., did:pkh:eip155:66238:0xabc...) */
+  controllerDid: Did;
+  /** Override the default controller witness API URL. If omitted, uses the OMATrust production endpoint. */
+  gatewayUrl?: string;
+  /** Optional chain ID — defaults to the API's active chain if omitted */
+  chainId?: number;
+  /** Request timeout in milliseconds (default: 15000) */
+  timeoutMs?: number;
+};
+
+export type RequestControllerWitnessResult = {
+  success: boolean;
+  uid: string | null;
+  txHash: string;
+  blockNumber: number;
+  observedAt: number;
+  method: string;
+};
+
+export type W3CKeyPurpose =
+  | "authentication"
+  | "assertionMethod"
+  | "keyAgreement";
+
+export type GetControllerAuthorizationParams = {
+  /**
+   * Controller identifier. Can be:
+   * - An EVM wallet address (Hex) for did:pkh controllers
+   * - A did:pkh DID string
+   * - A did:jwk DID string
+   */
+  controllerDid: string;
+  /** Subject DID the controller claims to control */
+  subjectDid: Did;
+  /** ethers v6 Provider for on-chain reads */
+  provider: unknown;
+  /** CAIP-2 chain identifier. Defaults to "eip155:6623" (OMAChain). */
+  chain?: string;
+  /** EAS contract address. If omitted, resolved from trust anchors. */
+  easContractAddress?: Hex;
+  /** How far back to scan for controller witnesses. Defaults to 0 (full history). */
+  fromBlock?: number;
+  /** DNS resolution function for did:web live check */
+  resolveTxt?: (host: string) => Promise<string[][]>;
+  /** DID document fetcher for did:web live check */
+  fetchDidDocument?: (domain: string) => Promise<Record<string, unknown>>;
+  /**
+   * W3C DID verification relationship purposes to require.
+   * Key bindings are only considered valid if their keyPurpose includes all requested purposes.
+   * Defaults to ["authentication", "assertionMethod"].
+   */
+  purpose?: W3CKeyPurpose[];
+};
+
+export type ControllerWitnessEvidence = {
+  /** Attestation UID */
+  uid: Hex;
+  /** Timestamp when the controller witness was issued (unix seconds) */
+  issuedAt: bigint;
+  /** EAS-level attester address (typically the OMA3 server wallet) */
+  attester: string;
+  /** Verification method used by the witness service */
+  method?: "dns" | "did-document" | "manual" | "other";
+};
+
+export type ControllerAuthorizationResult = {
+  /** Whether the controller has any authorization for this subject */
+  authorized: boolean;
+  /**
+   * Earliest timestamp of durable authorization evidence, usually the first
+   * Controller Witness. Null when authorization is only currently verified
+   * by live DNS/did.json.
+   */
+  anchoredFrom: bigint | null;
+  /**
+   * End of the authorization window. Set when a relevant key binding revocation
+   * closes the window. Null if the window is still open.
+   */
+  until: bigint | null;
+  /** Whether live DNS/did.json or contract ownership currently confirms control */
+  currentlyVerified: boolean;
+  /** Verification method for live check */
+  liveMethod: "dns" | "did-document" | "contract-ownership" | null;
+  /** Controller witness attestations found (oldest first) */
+  controllerWitnesses: ControllerWitnessEvidence[];
+  /** Key binding attestation UID if one exists */
+  keyBindingUid: Hex | null;
+  /**
+   * Whether the key binding's keyPurpose matched the requested purposes.
+   * - "matched": key binding exists and its purposes satisfy the request
+   * - "unknown": key binding exists but has no keyPurpose field
+   * - "mismatch": key binding exists but does not satisfy the requested purposes
+   * - "not-required": no key binding exists or no purpose filter was applied
+   */
+  keyPurposeStatus: "matched" | "unknown" | "mismatch" | "not-required";
+  /**
+   * Whether the key binding includes a verified transfer proof.
+   * Only relevant for did:pkh subjects where the controller is authorized
+   * via a key binding backed by a deterministic native transfer.
+   */
+  transferProofVerified?: boolean;
 };

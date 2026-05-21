@@ -1,6 +1,4 @@
 import {
-  Interface,
-  ZeroAddress,
   getAddress,
   isAddress
 } from "ethers";
@@ -12,24 +10,23 @@ import {
   getDomainFromDidWeb,
   isEvmDidPkh,
   normalizeDid
-} from "../../identity/did";
-import { OmaTrustError } from "../../shared/errors";
-import type { Did, Hex } from "../types";
-import { verifyDidJsonControllerDid } from "./did-json";
+} from "../identity/did";
+import { OmaTrustError } from "../shared/errors";
+import type { Did, Hex } from "./types";
+import { verifyDidJsonControllerDid } from "./proof/did-json";
 import {
   verifyDnsTxtControllerDid,
   type VerifyDnsTxtControllerDidOptions
-} from "./dns-txt-shared";
-import { calculateTransferAmount } from "./tx-encoded-value";
-
-const EIP1967_ADMIN_SLOT =
-  "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103" as const;
-
-const OWNERSHIP_PATTERNS = [
-  { method: "owner", signature: "function owner() view returns (address)" },
-  { method: "admin", signature: "function admin() view returns (address)" },
-  { method: "getOwner", signature: "function getOwner() view returns (address)" }
-] as const;
+} from "./proof/dns-txt-shared";
+import { calculateTransferAmount } from "./proof/tx-encoded-value";
+import {
+  discoverContractOwner,
+  discoverControllingWalletDid,
+  readOwnerFromContract,
+  OWNERSHIP_PATTERNS,
+  EIP1967_ADMIN_SLOT,
+  type ContractOwnershipProvider
+} from "./contract-ownership";
 
 export type SubjectOwnershipVerificationMethod =
   | "dns"
@@ -49,16 +46,7 @@ export interface SubjectOwnershipVerificationResult {
   controllingWalletDid?: Did;
 }
 
-export interface EvmOwnershipProvider {
-  call(transaction: { to: string; data: string }): Promise<string>;
-  getCode(address: string): Promise<string>;
-  getStorage(address: string, slot: string): Promise<string>;
-  getTransaction(hash: string): Promise<{
-    from?: string | null;
-    to?: string | null;
-    value?: bigint | string | number | null;
-    blockNumber?: number | null;
-  } | null>;
+export interface EvmOwnershipProvider extends ContractOwnershipProvider {
   getTransactionReceipt(hash: string): Promise<{
     blockNumber: number;
   } | null>;
@@ -95,63 +83,6 @@ function assertConnectedWalletDid(input: string): Did {
 
 function normalizeSubjectDid(input: string): Did {
   return normalizeDid(input);
-}
-
-async function readAddressFromContract(
-  provider: EvmOwnershipProvider,
-  contractAddress: string,
-  signature: string,
-  method: string
-): Promise<string | null> {
-  try {
-    const iface = new Interface([signature]);
-    const data = iface.encodeFunctionData(method, []);
-    const result = await provider.call({ to: contractAddress, data });
-    const [value] = iface.decodeFunctionResult(method, result);
-    if (typeof value === "string" && isAddress(value) && value !== ZeroAddress) {
-      return getAddress(value);
-    }
-  } catch {
-    // ignore read failures and try the next ownership pattern
-  }
-
-  return null;
-}
-
-async function discoverControllingWallet(
-  provider: EvmOwnershipProvider,
-  contractAddress: string,
-  chainId: number
-): Promise<string | null> {
-  for (const pattern of OWNERSHIP_PATTERNS) {
-    const address = await readAddressFromContract(
-      provider,
-      contractAddress,
-      pattern.signature,
-      pattern.method
-    );
-    if (address) {
-      return buildEvmDidPkh(chainId, address);
-    }
-  }
-
-  try {
-    const adminValue = await provider.getStorage(contractAddress, EIP1967_ADMIN_SLOT);
-    if (
-      adminValue &&
-      adminValue !== "0x" &&
-      adminValue !== "0x0000000000000000000000000000000000000000000000000000000000000000"
-    ) {
-      const adminAddress = getAddress(`0x${adminValue.slice(-40)}`);
-      if (adminAddress !== ZeroAddress) {
-        return buildEvmDidPkh(chainId, adminAddress);
-      }
-    }
-  } catch {
-    // ignore; this is just one fallback
-  }
-
-  return null;
 }
 
 export async function verifyDidWebOwnership(
@@ -268,7 +199,7 @@ export async function verifyDidPkhOwnership(
     };
   }
 
-  const controllingWalletDid = await discoverControllingWallet(params.provider, subjectAddress, chainId);
+  const controllingWalletDid = await discoverControllingWalletDid(params.provider, subjectAddress, chainId);
 
   if (params.txHash) {
     if (!controllingWalletDid) {
@@ -362,7 +293,7 @@ export async function verifyDidPkhOwnership(
   }
 
   for (const pattern of OWNERSHIP_PATTERNS) {
-    const ownerAddress = await readAddressFromContract(
+    const ownerAddress = await readOwnerFromContract(
       params.provider,
       subjectAddress,
       pattern.signature,
