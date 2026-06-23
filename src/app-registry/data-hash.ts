@@ -40,6 +40,10 @@ export async function computeDataHashFromUrl(
     throw new OmaTrustError("INVALID_INPUT", "url must be a non-empty string", { url });
   }
 
+  if (algorithm !== "keccak256" && algorithm !== "sha256") {
+    throw new OmaTrustError("INVALID_INPUT", `Unsupported hash algorithm: "${algorithm}". Must be "keccak256" or "sha256".`, { algorithm });
+  }
+
   const json = await fetchJson(url);
   const jcsJson = canonicalizeJson(json);
   return hashJcs(jcsJson, algorithm);

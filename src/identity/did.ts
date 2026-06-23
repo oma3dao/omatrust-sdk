@@ -3,6 +3,7 @@ import { base64url } from "jose";
 import { OmaTrustError } from "../shared/errors";
 import { assertString } from "../shared/assert";
 import { parseCaip10 } from "./caip";
+import { validatePublicJwk } from "./jwk";
 
 export type Hex = `0x${string}`;
 export type Did = string;
@@ -102,7 +103,8 @@ export function normalizeDidKey(input: string): Did {
 
 export function normalizeDid(input: string): Did {
   assertString(input, "input", "INVALID_DID");
-  const trimmed = input.trim();
+  // Strip DID URL fragment (#...) — fragments are not part of the DID itself (W3C DID Core §3.5)
+  const trimmed = input.trim().split("#")[0];
 
   if (!trimmed.startsWith("did:")) {
     return normalizeDidWeb(trimmed);
@@ -398,6 +400,18 @@ function validateDidPkh(did: string): PrivateKeyDidValidation {
     }
   }
 
+  // Deep validation for solana namespace
+  if (namespace === "solana") {
+    // Solana addresses are base58-encoded public keys, 32-44 characters
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+      return {
+        valid: false,
+        method: "pkh",
+        error: `Invalid Solana address "${address}" (must be 32-44 base58 characters)`
+      };
+    }
+  }
+
   return { valid: true, method: "pkh" };
 }
 
@@ -472,6 +486,12 @@ function validateDidJwk(did: string): PrivateKeyDidValidation {
       method: "jwk",
       error: "DID must reference a public key — private key component (d) is not allowed"
     };
+  }
+
+  // Validate required public key fields per kty (crv/x/y for EC, crv/x for OKP, n/e for RSA)
+  const jwkValidation = validatePublicJwk(jwk);
+  if (!jwkValidation.valid) {
+    return { valid: false, method: "jwk", error: jwkValidation.error };
   }
 
   return { valid: true, method: "jwk" };

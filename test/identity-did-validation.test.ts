@@ -6,6 +6,7 @@ import {
   normalizeDid,
   normalizeDidJwk,
   validatePrivateKeyDid,
+  computeDidHash,
 } from "../src/identity/did";
 import { jwkToDidJwk } from "../src/identity/jwk";
 
@@ -102,6 +103,36 @@ describe("identity/did – private-key validation", () => {
         const result = validatePrivateKeyDid("did:pkh:solana:mainnet:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuFoxokU4");
         expect(result).toEqual({ valid: true, method: "pkh" });
       });
+
+      it("rejects solana address with invalid base58 characters", () => {
+        // 'O' and '0' are not valid base58 characters
+        const result = validatePrivateKeyDid("did:pkh:solana:mainnet:0OIl1234567890abcdefghijkl");
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain("Invalid Solana address");
+      });
+
+      it("rejects solana address that is too short", () => {
+        const result = validatePrivateKeyDid("did:pkh:solana:mainnet:abc");
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain("Invalid Solana address");
+      });
+
+      it("rejects solana address that is too long", () => {
+        const result = validatePrivateKeyDid("did:pkh:solana:mainnet:" + "A".repeat(50));
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain("Invalid Solana address");
+      });
+
+      it("accepts valid solana addresses of various lengths", () => {
+        // 32-44 chars of valid base58
+        expect(validatePrivateKeyDid("did:pkh:solana:mainnet:11111111111111111111111111111114")).toEqual({ valid: true, method: "pkh" });
+        expect(validatePrivateKeyDid("did:pkh:solana:devnet:TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")).toEqual({ valid: true, method: "pkh" });
+      });
+
+      it("accepts non-eip155/non-solana namespaces with permissive check", () => {
+        const result = validatePrivateKeyDid("did:pkh:bip122:000000000019d6689c085ae165831e93:128Lkh3S7CkDTBZ8W7BbpsN3YYizJMp8p6");
+        expect(result).toEqual({ valid: true, method: "pkh" });
+      });
     });
 
     describe("did:jwk", () => {
@@ -163,7 +194,45 @@ describe("identity/did – private-key validation", () => {
         );
         const result = validatePrivateKeyDid(`did:jwk:${encoded}`);
         expect(result.valid).toBe(false);
-        expect(result.error).toContain("private key component");
+        expect(result.error).toContain("private key");
+      });
+
+      it("rejects EC JWK missing required public key fields", () => {
+        const incompleteEc = { kty: "EC", crv: "P-256", x: "abc" }; // missing y
+        const encoded = base64url.encode(new TextEncoder().encode(JSON.stringify(incompleteEc)));
+        const result = validatePrivateKeyDid(`did:jwk:${encoded}`);
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('"y"');
+      });
+
+      it("rejects OKP JWK missing required public key fields", () => {
+        const incompleteOkp = { kty: "OKP", crv: "Ed25519" }; // missing x
+        const encoded = base64url.encode(new TextEncoder().encode(JSON.stringify(incompleteOkp)));
+        const result = validatePrivateKeyDid(`did:jwk:${encoded}`);
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('"x"');
+      });
+
+      it("rejects RSA JWK missing required public key fields", () => {
+        const incompleteRsa = { kty: "RSA", n: "abc" }; // missing e
+        const encoded = base64url.encode(new TextEncoder().encode(JSON.stringify(incompleteRsa)));
+        const result = validatePrivateKeyDid(`did:jwk:${encoded}`);
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('"e"');
+      });
+
+      it("accepts valid OKP did:jwk", () => {
+        const okpJwk = { kty: "OKP", crv: "Ed25519", x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo" };
+        const encoded = base64url.encode(new TextEncoder().encode(JSON.stringify(okpJwk)));
+        const result = validatePrivateKeyDid(`did:jwk:${encoded}`);
+        expect(result).toEqual({ valid: true, method: "jwk" });
+      });
+
+      it("accepts valid RSA did:jwk", () => {
+        const rsaJwk = { kty: "RSA", n: "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM", e: "AQAB" };
+        const encoded = base64url.encode(new TextEncoder().encode(JSON.stringify(rsaJwk)));
+        const result = validatePrivateKeyDid(`did:jwk:${encoded}`);
+        expect(result).toEqual({ valid: true, method: "jwk" });
       });
     });
   });
@@ -187,6 +256,30 @@ describe("identity/did – private-key validation", () => {
     it("routes did:jwk through normalizeDidJwk", () => {
       const did = jwkToDidJwk(EC_P256_JWK);
       expect(normalizeDid(did)).toBe(did);
+    });
+  });
+
+  describe("normalizeDid – fragment stripping", () => {
+    it("strips fragment from did:key before normalizing", () => {
+      const bare = "did:key:z6MkpPanM5XyyGcp6HAwJSm7SmWmmb4MpfmBfgRSq4t7GokV";
+      const withFragment = `${bare}#z6MkpPanM5XyyGcp6HAwJSm7SmWmmb4MpfmBfgRSq4t7GokV`;
+      expect(normalizeDid(withFragment)).toBe(normalizeDid(bare));
+    });
+
+    it("strips fragment from did:web before normalizing", () => {
+      expect(normalizeDid("did:web:example.com#key-1")).toBe(normalizeDid("did:web:example.com"));
+    });
+
+    it("strips fragment from did:pkh before normalizing", () => {
+      const bare = "did:pkh:eip155:1:0x1234567890123456789012345678901234567890";
+      const withFragment = `${bare}#controller`;
+      expect(normalizeDid(withFragment)).toBe(normalizeDid(bare));
+    });
+
+    it("produces same computeDidHash with and without fragment", () => {
+      const bare = "did:key:z6MkpPanM5XyyGcp6HAwJSm7SmWmmb4MpfmBfgRSq4t7GokV";
+      const withFragment = `${bare}#z6MkpPanM5XyyGcp6HAwJSm7SmWmmb4MpfmBfgRSq4t7GokV`;
+      expect(computeDidHash(withFragment)).toBe(computeDidHash(bare));
     });
   });
 });
