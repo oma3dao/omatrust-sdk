@@ -6,3 +6,5 @@ export * from "./controller-id";
 export * from "./types";
 export * from "./caip";
 export * from "./data";
+export * from "./artifact";
+export * from "./did-migration";

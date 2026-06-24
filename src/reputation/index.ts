@@ -11,3 +11,4 @@ export * from "./witness";
 export * from "./contract-ownership";
 export * from "./attester-authorization";
 export * from "./proof/index";
+export * from "./schema-proof-verification";
