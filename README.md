@@ -41,10 +41,13 @@ npm install @ethereum-attestation-service/eas-sdk
   - DID address derivation
   - CAIP-10 / CAIP-2 helpers
   - JSON canonicalization helpers
+  - did:artifact construction and verification
+  - DID method migration (did:ethr → did:pkh, did:key → did:jwk)
 - `@oma3/omatrust/reputation`
   - attestation submit/delegated flows
   - attestation query + verification
   - proof creation/verification helpers
+  - schema-aware proof verification (linked identifier, key binding)
   - controller witness client
 - `@oma3/omatrust/app-registry`
   - ERC-8004 helpers

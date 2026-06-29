@@ -1,6 +1,6 @@
 {
   "name": "@oma3/omatrust",
-  "version": "0.1.0-alpha.11",
+  "version": "0.1.0-alpha.12",
   "description": "Framework-agnostic TypeScript SDK for OMATrust",
   "license": "MIT",
   "type": "module",
@@ -70,7 +70,8 @@
   },
   "dependencies": {
     "canonicalize": "^2.1.0",
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "multiformats": "^13.4.2"
   },
   "peerDependencies": {
     "@ethereum-attestation-service/eas-sdk": "^2.4.0",
