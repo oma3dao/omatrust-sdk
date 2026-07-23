@@ -64,6 +64,30 @@ describe("app-registry/data-hash", () => {
       await expect(computeDataHashFromUrl(null as unknown as string, "keccak256")).rejects.toThrow(OmaTrustError);
     });
 
+    it("throws INVALID_INPUT for unsupported algorithm at runtime", async () => {
+      await expect(
+        computeDataHashFromUrl(
+          "https://example.com/data.json",
+          "md5" as unknown as "keccak256" | "sha256"
+        )
+      ).rejects.toThrow(OmaTrustError);
+
+      try {
+        await computeDataHashFromUrl(
+          "https://example.com/data.json",
+          "md5" as unknown as "keccak256" | "sha256"
+        );
+      } catch (err) {
+        expect(err).toBeInstanceOf(OmaTrustError);
+        expect((err as OmaTrustError).code).toBe("INVALID_INPUT");
+        expect((err as OmaTrustError).message).toContain("Unsupported hash algorithm");
+        expect((err as OmaTrustError).message).toContain("md5");
+      }
+
+      // Guard must run before fetch
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("throws NETWORK_ERROR when fetch fails", async () => {
       fetchMock.mockRejectedValueOnce(new Error("network failure"));
       try {
