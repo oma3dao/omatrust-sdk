@@ -2,10 +2,6 @@
 
 Framework-agnostic TypeScript SDK for OMATrust.
 
-Current npm state:
-- As of February 25, 2026:
-  - `latest` -> `0.1.0-alpha.5`
-  - `alpha` -> `0.1.0-alpha.5`
 - Scope: `@oma3/omatrust`
 
 ## Install
@@ -25,7 +21,7 @@ npm install @oma3/omatrust@alpha ethers
 If you want to pin an exact version:
 
 ```bash
-npm install @oma3/omatrust@0.1.0-alpha.5 ethers
+npm install @oma3/omatrust@0.1.0-alpha.14 ethers
 ```
 
 If you use the reputation module, also install EAS SDK:

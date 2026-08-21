@@ -1,3 +1,13 @@
+/**
+ * DID utilities — full surface including ethers-dependent hashing/address functions.
+ *
+ * Re-exports everything from ./did-pure (dependency-free) plus the ethers-dependent
+ * functions for hashing DDOs, deriving addresses, and deep EVM validation.
+ *
+ * If you only need normalization/parsing and want to avoid pulling in ethers,
+ * import from "@oma3/omatrust/identity/did" instead.
+ */
+
 import { getAddress, isAddress, keccak256, toUtf8Bytes } from "ethers";
 import { base64url } from "jose";
 import { OmaTrustError } from "../shared/errors";
@@ -5,145 +15,28 @@ import { assertString } from "../shared/assert";
 import { parseCaip10 } from "./caip";
 import { validatePublicJwk } from "./jwk";
 
-export type Hex = `0x${string}`;
-export type Did = string;
+// Import what we need from did-pure for internal use
+import {
+  type Hex,
+  type Did,
+  normalizeDid,
+  normalizeDidPkh,
+  extractDidMethod,
+  parseDidPkh,
+  isValidDid,
+  computeDidAddress,
+} from "./did-core";
 
-const DID_REGEX = /^did:[a-z0-9]+:.+$/i;
+// Re-export everything from the dependency-free module
+export * from "./did-core";
 
-export function isValidDid(did: string): boolean {
-  return DID_REGEX.test(did);
-}
-
-export function extractDidMethod(did: Did): string | null {
-  const match = did.match(/^did:([a-z0-9]+):/i);
-  return match ? match[1] : null;
-}
-
-export function extractDidIdentifier(did: Did): string | null {
-  const match = did.match(/^did:[a-z0-9]+:(.+)$/i);
-  return match ? match[1] : null;
-}
-
-export function normalizeDomain(domain: string): string {
-  assertString(domain, "domain", "INVALID_DID");
-  return domain.trim().toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
-}
-
-export function normalizeDidWeb(input: string): Did {
-  assertString(input, "input", "INVALID_DID");
-  const trimmed = input.trim();
-
-  if (trimmed.startsWith("did:") && !trimmed.startsWith("did:web:")) {
-    throw new OmaTrustError("INVALID_DID", "Expected did:web DID", { input });
-  }
-
-  const identifier = trimmed.startsWith("did:web:")
-    ? trimmed.slice("did:web:".length)
-    : trimmed;
-
-  const [host, ...pathParts] = identifier.split("/");
-  if (!host) {
-    throw new OmaTrustError("INVALID_DID", "Invalid did:web identifier", { input });
-  }
-
-  const normalizedHost = normalizeDomain(host);
-  const path = pathParts.length > 0 ? `/${pathParts.join("/")}` : "";
-  return `did:web:${normalizedHost}${path}`;
-}
-
-export function normalizeDidPkh(input: string): Did {
-  assertString(input, "input", "INVALID_DID");
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("did:pkh:")) {
-    throw new OmaTrustError("INVALID_DID", "Expected did:pkh DID", { input });
-  }
-
-  const parts = trimmed.split(":");
-  if (parts.length !== 5) {
-    throw new OmaTrustError("INVALID_DID", "Invalid did:pkh format", { input });
-  }
-
-  const [, , namespace, chainId, address] = parts;
-  if (!namespace || !chainId || !address) {
-    throw new OmaTrustError("INVALID_DID", "Invalid did:pkh components", { input });
-  }
-
-  return `did:pkh:${namespace.toLowerCase()}:${chainId}:${address.toLowerCase()}`;
-}
-
-export function normalizeDidHandle(input: string): Did {
-  assertString(input, "input", "INVALID_DID");
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("did:handle:")) {
-    throw new OmaTrustError("INVALID_DID", "Expected did:handle DID", { input });
-  }
-
-  const parts = trimmed.split(":");
-  if (parts.length !== 4) {
-    throw new OmaTrustError("INVALID_DID", "Invalid did:handle format", { input });
-  }
-
-  const [, , platform, username] = parts;
-  if (!platform || !username) {
-    throw new OmaTrustError("INVALID_DID", "Invalid did:handle components", { input });
-  }
-
-  return `did:handle:${platform.toLowerCase()}:${username}`;
-}
-
-export function normalizeDidKey(input: string): Did {
-  assertString(input, "input", "INVALID_DID");
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("did:key:")) {
-    throw new OmaTrustError("INVALID_DID", "Expected did:key DID", { input });
-  }
-
-  return trimmed;
-}
-
-export function normalizeDid(input: string): Did {
-  assertString(input, "input", "INVALID_DID");
-  // Strip DID URL fragment (#...) — fragments are not part of the DID itself (W3C DID Core §3.5)
-  const trimmed = input.trim().split("#")[0];
-
-  if (!trimmed.startsWith("did:")) {
-    return normalizeDidWeb(trimmed);
-  }
-
-  if (!isValidDid(trimmed)) {
-    throw new OmaTrustError("INVALID_DID", "Invalid DID format", { input });
-  }
-
-  const method = extractDidMethod(trimmed);
-  switch (method) {
-    case "web":
-      return normalizeDidWeb(trimmed);
-    case "pkh":
-      return normalizeDidPkh(trimmed);
-    case "handle":
-      return normalizeDidHandle(trimmed);
-    case "key":
-      return normalizeDidKey(trimmed);
-    case "jwk":
-      return normalizeDidJwk(trimmed);
-    default:
-      return trimmed;
-  }
-}
+// ---------------------------------------------------------------------------
+// Ethers-dependent: Hashing and address derivation
+// ---------------------------------------------------------------------------
 
 export function computeDidHash(did: Did): Hex {
   const normalized = normalizeDid(did);
   return keccak256(toUtf8Bytes(normalized)) as Hex;
-}
-
-export function computeDidAddress(didHash: Hex): Hex {
-  assertString(didHash, "didHash", "INVALID_DID");
-  if (!/^0x[0-9a-fA-F]{64}$/.test(didHash)) {
-    throw new OmaTrustError("INVALID_DID", "didHash must be 32-byte hex", { didHash });
-  }
-
-  // Spec: low-order 160 bits of didHash, serialized as lowercase 0x-hex.
-  return `0x${didHash.slice(-40).toLowerCase()}` as Hex;
 }
 
 export function didToAddress(did: Did): Hex {
@@ -158,75 +51,9 @@ export function validateDidAddress(did: Did, address: Hex): boolean {
   }
 }
 
-export function buildDidWeb(domain: string): Did {
-  return `did:web:${normalizeDomain(domain)}`;
-}
-
-export function buildDidPkh(
-  namespace: string,
-  chainId: string | number,
-  address: string
-): Did {
-  assertString(namespace, "namespace", "INVALID_DID");
-  assertString(address, "address", "INVALID_DID");
-  if (chainId === "" || chainId === null || chainId === undefined) {
-    throw new OmaTrustError("INVALID_DID", "chainId is required", { chainId });
-  }
-  return `did:pkh:${namespace.toLowerCase()}:${chainId}:${address.toLowerCase()}`;
-}
-
-export function buildEvmDidPkh(chainId: string | number, address: string): Did {
-  return buildDidPkh("eip155", chainId, address);
-}
-
-export function buildDidPkhFromCaip10(caip10: string): Did {
-  const parsed = parseCaip10(caip10);
-  return buildDidPkh(parsed.namespace, parsed.reference, parsed.address);
-}
-
-function parseDidPkh(did: Did): { namespace: string; chainId: string; address: string } | null {
-  if (!did.startsWith("did:pkh:")) {
-    return null;
-  }
-
-  const parts = did.split(":");
-  if (parts.length !== 5) {
-    return null;
-  }
-
-  const [, , namespace, chainId, address] = parts;
-  if (!namespace || !chainId || !address) {
-    return null;
-  }
-
-  return { namespace, chainId, address };
-}
-
-export function getChainIdFromDidPkh(did: Did): string | null {
-  return parseDidPkh(did)?.chainId ?? null;
-}
-
-export function getAddressFromDidPkh(did: Did): string | null {
-  return parseDidPkh(did)?.address ?? null;
-}
-
-export function getNamespaceFromDidPkh(did: Did): string | null {
-  return parseDidPkh(did)?.namespace ?? null;
-}
-
-export function isEvmDidPkh(did: Did): boolean {
-  return getNamespaceFromDidPkh(did) === "eip155";
-}
-
-export function getDomainFromDidWeb(did: Did): string | null {
-  if (!did.startsWith("did:web:")) {
-    return null;
-  }
-
-  const identifier = did.slice("did:web:".length);
-  const [domain] = identifier.split("/");
-  return domain || null;
-}
+// ---------------------------------------------------------------------------
+// Ethers-dependent: Address extraction
+// ---------------------------------------------------------------------------
 
 /**
  * Extract an EVM address from a DID or address-like identifier.
@@ -278,7 +105,7 @@ export function extractAddressFromDid(identifier: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Private-Key DID Validation
+// Ethers-dependent: Private-Key DID Validation
 // ---------------------------------------------------------------------------
 
 /** Result of private-key DID validation */
@@ -337,15 +164,7 @@ export function validatePrivateKeyDid(did: string): PrivateKeyDidValidation {
 }
 
 /**
- * Validate a did:pkh DID.
- *
- * Format: did:pkh:<namespace>:<chainId>:<address>
- * - Must have exactly 5 colon-separated parts
- * - namespace must be a valid CAIP-2 namespace (lowercase alphanumeric + hyphens, 3-8 chars)
- * - chainId must be non-empty
- * - address must be non-empty
- * - For eip155 namespace: address must be a valid EVM address (0x + 40 hex chars)
- * - For other namespaces: address must be non-empty (permissive fallback)
+ * Validate a did:pkh DID with deep EVM address validation.
  */
 function validateDidPkh(did: string): PrivateKeyDidValidation {
   const parts = did.split(":");
@@ -416,14 +235,7 @@ function validateDidPkh(did: string): PrivateKeyDidValidation {
 }
 
 /**
- * Validate a did:jwk DID.
- *
- * Format: did:jwk:<base64url-encoded-JWK>
- * - Must have exactly 3 colon-separated parts
- * - Identifier must be valid base64url
- * - Decoded value must be valid JSON
- * - Decoded JSON must contain a valid kty field (EC, OKP, RSA)
- * - Must NOT contain d (private key component)
+ * Validate a did:jwk DID (duplicated here for PrivateKeyDidValidation return type).
  */
 function validateDidJwk(did: string): PrivateKeyDidValidation {
   const parts = did.split(":");
@@ -495,23 +307,4 @@ function validateDidJwk(did: string): PrivateKeyDidValidation {
   }
 
   return { valid: true, method: "jwk" };
-}
-
-/**
- * Normalize a did:jwk DID.
- * Validates structure and returns the DID unchanged (did:jwk is already canonical).
- */
-export function normalizeDidJwk(input: string): Did {
-  assertString(input, "input", "INVALID_DID");
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("did:jwk:")) {
-    throw new OmaTrustError("INVALID_DID", "Expected did:jwk DID", { input });
-  }
-
-  const result = validateDidJwk(trimmed);
-  if (!result.valid) {
-    throw new OmaTrustError("INVALID_DID", result.error ?? "Invalid did:jwk", { input });
-  }
-
-  return trimmed;
 }
