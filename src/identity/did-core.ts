@@ -243,7 +243,7 @@ const VALID_JWK_KTY = new Set(["EC", "OKP", "RSA"]);
  * - Decoded JSON must contain a valid kty field (EC, OKP, RSA)
  * - Must NOT contain d (private key component)
  */
-function validateDidJwk(did: string): { valid: boolean; method: "jwk"; error?: string } {
+export function validateDidJwk(did: string): { valid: boolean; method: "jwk"; error?: string } {
   const parts = did.split(":");
   if (parts.length !== 3) {
     return {
