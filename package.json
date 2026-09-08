@@ -1,6 +1,6 @@
 {
   "name": "@oma3/omatrust",
-  "version": "0.1.0-alpha.13",
+  "version": "0.1.0-alpha.14",
   "description": "Framework-agnostic TypeScript SDK for OMATrust",
   "license": "MIT",
   "type": "module",
@@ -23,6 +23,14 @@
       },
       "import": "./dist/identity/index.js",
       "require": "./dist/identity/index.cjs"
+    },
+    "./identity/did": {
+      "types": {
+        "import": "./dist/identity/did-core.d.ts",
+        "require": "./dist/identity/did-core.d.cts"
+      },
+      "import": "./dist/identity/did-core.js",
+      "require": "./dist/identity/did-core.cjs"
     },
     "./reputation": {
       "types": {
@@ -71,7 +79,7 @@
   "dependencies": {
     "canonicalize": "^2.1.0",
     "jose": "^6.2.3",
-    "multiformats": "^13.4.2"
+    "multiformats": "^14.0.0"
   },
   "peerDependencies": {
     "@ethereum-attestation-service/eas-sdk": "^2.4.0",
